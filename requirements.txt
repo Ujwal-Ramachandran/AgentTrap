@@ -1,0 +1,13 @@
+# AgentTrap Python dependencies. Local and free, one RTX 4060 (see CLAUDE.md).
+# Phase A (baseline agent loop) runs on the standard library alone with the mock
+# LLM and mock target. Install the line below to drive a real model.
+
+# Phase A: real model via Ollama
+ollama>=0.3.0
+
+# Phase B: PromptGuard 2 screening (small DeBERTa classifier). Uncomment when built.
+# transformers>=4.44
+# torch>=2.2
+
+# Phase C: dashboard. Uncomment when built.
+# flask>=3.0
