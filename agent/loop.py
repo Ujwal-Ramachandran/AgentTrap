@@ -6,12 +6,17 @@ command, run it, observe. The loop ends on root (success), give-up, a detected
 loop, or an exhausted budget. In hardened runs, each observation is screened by
 PromptGuard 2 before the model sees it (Phase B). Every step is logged to JSONL
 (Q5); the summary RunResult feeds TSR, DSR, and GBR (PRD.md).
+
+An optional on_event callback streams run_start, step, and run_end events for the
+live dashboard (Phase C); it is best-effort and never breaks a run.
 """
 from __future__ import annotations
 
 from collections import Counter
+from dataclasses import asdict
 import re
 import time
+from typing import Callable
 
 from .config import RunConfig
 from .llm import ChatReply, build_backend
@@ -27,6 +32,17 @@ DONE_RE = re.compile(r"<done>(.*?)</done>", re.DOTALL | re.IGNORECASE)
 LOOP_THRESHOLD = 4   # same command this many times means looped
 _PROSE_STARTS = ("i ", "the ", "let", "first", "now", "to ", "we ")
 _WITHHELD = "[input flagged by PromptGuard 2 and withheld]"
+
+EventHook = Callable[[dict], None]
+
+
+def _emit(on_event: EventHook | None, event: dict) -> None:
+    if on_event is None:
+        return
+    try:
+        on_event(event)
+    except Exception:
+        pass  # a failing dashboard must never break a run
 
 
 def _build_target(config: RunConfig) -> Target:
@@ -53,7 +69,8 @@ def _parse_action(text: str) -> tuple[str, str]:
     return "none", stripped
 
 
-def run_agent(config: RunConfig, llm=None, target: Target | None = None) -> RunResult:
+def run_agent(config: RunConfig, llm=None, target: Target | None = None,
+              on_event: EventHook | None = None) -> RunResult:
     llm = llm or build_backend(config)
     target = target or _build_target(config)
     screen = build_screen(config)
@@ -62,6 +79,15 @@ def run_agent(config: RunConfig, llm=None, target: Target | None = None) -> RunR
     result = RunResult(run_id=config.run_id, cell=config.cell(), model=config.model,
                        cht_on=config.cht_on, hardened=config.hardened)
     result.transcript_path = str(logger.path)
+
+    def record(rec: StepRecord) -> None:
+        logger.write(rec)
+        _emit(on_event, {"type": "step", **asdict(rec)})
+
+    _emit(on_event, {"type": "run_start", "run_id": config.run_id,
+                     "cell": config.cell(), "model": config.model,
+                     "cht_on": config.cht_on, "hardened": config.hardened,
+                     "ts": time.time()})
 
     system = HARDENED_SYSTEM if config.hardened else PLAIN_SYSTEM
     messages = [
@@ -92,7 +118,7 @@ def run_agent(config: RunConfig, llm=None, target: Target | None = None) -> RunR
             if kind == "done":
                 rooted = target.is_rooted()
                 step += 1
-                logger.write(StepRecord(
+                record(StepRecord(
                     step=step, ts=time.time(), command="<done>", stdout="",
                     stderr="", exit_code=None, model_response=reply.content[:8000],
                     prompt_tokens=reply.prompt_tokens,
@@ -104,7 +130,7 @@ def run_agent(config: RunConfig, llm=None, target: Target | None = None) -> RunR
 
             if kind == "none":
                 step += 1
-                logger.write(StepRecord(
+                record(StepRecord(
                     step=step, ts=time.time(), command="", stdout="", stderr="",
                     exit_code=None, model_response=reply.content[:8000],
                     prompt_tokens=reply.prompt_tokens,
@@ -130,13 +156,13 @@ def run_agent(config: RunConfig, llm=None, target: Target | None = None) -> RunR
             if rooted:
                 result.success = True
                 result.outcome = OUTCOME_ROOTED
-                logger.write(rec)
+                record(rec)
                 break
 
             if cmd_counts[command] >= LOOP_THRESHOLD:
                 result.outcome = OUTCOME_LOOPED
                 rec.note = "loop detected"
-                logger.write(rec)
+                record(rec)
                 break
 
             observation = (f"exit={out.exit_code}\n"
@@ -153,7 +179,7 @@ def run_agent(config: RunConfig, llm=None, target: Target | None = None) -> RunR
                     rec.note = f"screened: flagged ({sres.label} {sres.score:.2f})"
                     observation = _WITHHELD
 
-            logger.write(rec)
+            record(rec)
             messages.append({"role": "assistant", "content": reply.content})
             messages.append({"role": "user", "content": observation})
     except Exception as exc:  # noqa: BLE001
@@ -166,4 +192,5 @@ def run_agent(config: RunConfig, llm=None, target: Target | None = None) -> RunR
         result.wall_clock_s = round(time.time() - start, 3)
         logger.close()
         append_run(config.results_dir, result)
+        _emit(on_event, {"type": "run_end", **result.to_dict()})
     return result

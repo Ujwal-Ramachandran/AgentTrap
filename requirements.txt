@@ -17,4 +17,4 @@ ollama>=0.3.0
 # torch>=2.2
 
 # Phase C: dashboard
-# flask>=3.0
+flask>=3.0
