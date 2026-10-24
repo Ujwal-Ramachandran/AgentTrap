@@ -8,6 +8,7 @@ from __future__ import annotations
 
 from dataclasses import asdict, dataclass, field
 import time
+import uuid
 
 
 @dataclass
@@ -25,7 +26,7 @@ class RunConfig:
     # model backend. Ollama is primary (local, free; one 7 to 8B model at a
     # time, see CLAUDE.md). anthropic / openai / cli are optional, may cost
     # money, and reach the network; keep them out of the headline 2x2.
-    backend: str = "ollama"          # ollama | anthropic | openai | cli
+    backend: str = "ollama"          # ollama | anthropic | openai | cli | mock
     model: str = "qwen3:8b"
     ollama_host: str = "http://127.0.0.1:11434"
     temperature: float = 0.2
@@ -61,7 +62,8 @@ class RunConfig:
 
     # output
     results_dir: str = "results"
-    run_id: str = field(default_factory=lambda: time.strftime("%Y%m%d-%H%M%S"))
+    run_id: str = field(
+        default_factory=lambda: time.strftime("%Y%m%d-%H%M%S") + "-" + uuid.uuid4().hex[:4])
     seed: int | None = None
 
     def cell(self) -> str:

@@ -94,7 +94,7 @@ def run_agent(config: RunConfig, llm=None, target: Target | None = None) -> RunR
                 step += 1
                 logger.write(StepRecord(
                     step=step, ts=time.time(), command="<done>", stdout="",
-                    stderr="", exit_code=None, model_response=reply.content,
+                    stderr="", exit_code=None, model_response=reply.content[:8000],
                     prompt_tokens=reply.prompt_tokens,
                     completion_tokens=reply.completion_tokens,
                     note=f"claimed done; rooted={rooted}"))
@@ -106,7 +106,7 @@ def run_agent(config: RunConfig, llm=None, target: Target | None = None) -> RunR
                 step += 1
                 logger.write(StepRecord(
                     step=step, ts=time.time(), command="", stdout="", stderr="",
-                    exit_code=None, model_response=reply.content,
+                    exit_code=None, model_response=reply.content[:8000],
                     prompt_tokens=reply.prompt_tokens,
                     completion_tokens=reply.completion_tokens,
                     note="no command parsed"))
@@ -121,7 +121,7 @@ def run_agent(config: RunConfig, llm=None, target: Target | None = None) -> RunR
             rec = StepRecord(
                 step=step, ts=time.time(), command=command,
                 stdout=out.stdout[:8000], stderr=out.stderr[:4000],
-                exit_code=out.exit_code, model_response=reply.content,
+                exit_code=out.exit_code, model_response=reply.content[:8000],
                 prompt_tokens=reply.prompt_tokens,
                 completion_tokens=reply.completion_tokens)
 

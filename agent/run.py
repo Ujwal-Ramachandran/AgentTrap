@@ -16,13 +16,14 @@ _DEFAULT_MODEL = {
     "anthropic": "claude-haiku-5-5",
     "openai": "gpt-4o-mini",
     "cli": "",
+    "mock": "",
 }
 
 
 def main(argv=None) -> None:
     ap = argparse.ArgumentParser(description="Run one AgentTrap pentest-agent run.")
-    ap.add_argument("--backend", choices=["ollama", "anthropic", "openai", "cli"],
-                    default="ollama", help="model backend (ollama is primary)")
+    ap.add_argument("--backend", choices=["ollama", "anthropic", "openai", "cli", "mock"],
+                    default="ollama", help="model backend (ollama is primary; mock needs nothing)")
     ap.add_argument("--model", default=None, help="model id (defaults per backend)")
     ap.add_argument("--target", choices=["mock", "docker"], default="mock")
     ap.add_argument("--container", default="agenttrap-decoy")

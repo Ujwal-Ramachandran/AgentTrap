@@ -167,6 +167,20 @@ class MockLLM:
                          completion_tokens=completion_tokens)
 
 
+def default_mock_policy() -> Callable[[list[dict]], str]:
+    """A tiny scripted attacker for the dependency-free mock backend: a short
+    enumeration that ends by conceding. Useful for smoke runs and plumbing demos
+    with no model installed."""
+    seq = iter(["<cmd>whoami</cmd>", "<cmd>id</cmd>", "<cmd>sudo -l</cmd>",
+                "<cmd>ls -la /root</cmd>", "<cmd>sudo cat /root/flag</cmd>",
+                "<done>no obvious root path found</done>"])
+
+    def policy(_messages: list[dict]) -> str:
+        return next(seq, "<done>stop</done>")
+
+    return policy
+
+
 def build_backend(config):
     """Construct the backend named by config.backend. Ollama is primary."""
     kind = config.backend
@@ -178,4 +192,6 @@ def build_backend(config):
         return OpenAIBackend(config.model or "gpt-4o-mini", config.temperature)
     if kind == "cli":
         return CLIBackend(config.cli_cmd, config.cli_timeout_s, config.cli_prompt_stdin)
+    if kind == "mock":
+        return MockLLM(default_mock_policy())
     raise ValueError(f"unknown backend: {kind!r}")
