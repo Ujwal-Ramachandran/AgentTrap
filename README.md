@@ -41,7 +41,16 @@ python -m agent.run --backend anthropic --model claude-sonnet-5-5 --target docke
 python -m agent.run --backend cli --target docker   # uses the Claude Code / Codex CLI
 ```
 
-Each run prints a `RunResult` and writes a JSONL transcript under `results/logs/`. The demo view (agent console left, live metrics right) is the Flask dashboard, built in a later phase.
+Each run prints a `RunResult` and writes a JSONL transcript under `results/logs/`.
+
+## Run the dashboard
+
+```
+pip install flask
+python -m dashboard.app        # serves http://127.0.0.1:5000
+```
+
+The dashboard (agent console on the left, live metrics on the right) launches a run from the control bar and streams its events over server-sent events. It works with the mock backend and target, so no model is needed to see it live.
 
 ## Testing
 
@@ -59,8 +68,9 @@ Coverage includes action parsing, backend selection, input screens, targets, res
 
 - `agent/` (the pentest agent: loop, backends, targets, screening, prompts, results, CLI)
 - `tests/` (mock-based smoke tests)
+- `dashboard/` (Flask + SSE live console and metrics)
 - `results/` (per-run JSONL logs and the runs summary; git-ignored)
-- Planned by the decoy and harness owners: `decoy/`, `traps/`, `harness/`, `dashboard/`.
+- Planned by the decoy and harness owners: `decoy/`, `traps/`, `harness/`.
 - The markdown docs (this file, CLAUDE.md, PRD.md, ARCHITECTURE.md, TASKS.md) live at the repo root.
 
 ## Team
