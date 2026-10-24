@@ -27,8 +27,8 @@ For real runs: install and start Ollama, then `ollama pull qwen3:8b` (or `llama3
 ## Run the agent
 
 ```
-# quick mock run, no model needed
-python -m agent.run --target mock
+# quick mock run, no model or GPU needed
+python -m agent.run --backend mock --target mock
 
 # real run against the decoy (primary backend)
 python -m agent.run --backend ollama --model qwen3:8b --target docker --container agenttrap-decoy
@@ -42,6 +42,18 @@ python -m agent.run --backend cli --target docker   # uses the Claude Code / Cod
 ```
 
 Each run prints a `RunResult` and writes a JSONL transcript under `results/logs/`. The demo view (agent console left, live metrics right) is the Flask dashboard, built in a later phase.
+
+## Testing
+
+All tests use the standard library (unittest), a mock backend, and a mock target, so they need no model, GPU, Docker, or network.
+
+```
+python -m unittest discover -s tests          # full suite (unit + loop integration)
+python tests/test_loop_smoke.py               # quick baseline demo
+python tests/test_hardening_smoke.py          # quick hardening demo
+```
+
+Coverage includes action parsing, backend selection, input screens, targets, result logging, and loop outcomes (rooted, gave-up, looped, budget, error) plus the hardened withhold path.
 
 ## Folder layout
 

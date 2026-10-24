@@ -30,7 +30,7 @@ At a high level, one step is: read the latest shell output, decide the next acti
 
 ## Model backends
 
-The loop talks to the model through one interface (`chat(messages) -> ChatReply`), so the backend is swappable. Ollama is the default and the only one used for the headline 2x2. The hosted backends (Anthropic, OpenAI) and the CLI backend (Claude Code or Codex in non-interactive print mode) are optional, may cost money, and reach the network; they are meant for the stronger-attacker honesty check and for machines without Ollama, not for the main experiment. The decoy sandbox stays no-egress regardless; only the agent process reaches a hosted API.
+The loop talks to the model through one interface (`chat(messages) -> ChatReply`), so the backend is swappable. Ollama is the default and the only one used for the headline 2x2. The hosted backends (Anthropic, OpenAI) and the CLI backend (Claude Code or Codex in non-interactive print mode) are optional, may cost money, and reach the network; they are meant for the stronger-attacker honesty check and for machines without Ollama, not for the main experiment. A dependency-free mock backend drives the loop in tests and plumbing demos (`--backend mock`). The decoy sandbox stays no-egress regardless; only the agent process reaches a hosted API.
 
 ## Tech choices and 4060 sizing
 
