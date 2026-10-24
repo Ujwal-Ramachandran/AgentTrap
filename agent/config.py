@@ -1,8 +1,8 @@
 """Run configuration for the AgentTrap pentest agent.
 
-One RunConfig describes a single agent run: which model, which 2x2 cell
-(CHT deception on/off, agent plain/hardened), and the budgets that bound the
-run. See PRD.md for the experiment and ARCHITECTURE.md for the loop.
+One RunConfig describes a single agent run: which backend and model, which 2x2
+cell (CHT deception on/off, agent plain/hardened), and the budgets that bound
+the run. See PRD.md for the experiment and ARCHITECTURE.md for the loop.
 """
 from __future__ import annotations
 
@@ -22,17 +22,30 @@ class Budgets:
 
 @dataclass
 class RunConfig:
-    # model (one 7 to 8B model at a time via Ollama; see CLAUDE.md)
+    # model backend. Ollama is primary (local, free; one 7 to 8B model at a
+    # time, see CLAUDE.md). anthropic / openai / cli are optional, may cost
+    # money, and reach the network; keep them out of the headline 2x2.
+    backend: str = "ollama"          # ollama | anthropic | openai | cli
     model: str = "qwen3:8b"
     ollama_host: str = "http://127.0.0.1:11434"
     temperature: float = 0.2
 
+    # cli backend (Claude Code or Codex in non-interactive print mode)
+    cli_cmd: list[str] = field(default_factory=lambda: ["claude", "-p"])
+    cli_timeout_s: float = 120.0
+    cli_prompt_stdin: bool = False
+
     # 2x2 cell
     cht_on: bool = False     # decoy seeded with CHT deception
-    hardened: bool = False   # defense-aware prompt + PromptGuard 2 (Phase B)
+    hardened: bool = False   # defense-aware prompt + PromptGuard 2 screening
+
+    # hardening (Phase B); used only when hardened is True
+    screen_kind: str = "promptguard2"   # promptguard2 | mock | null
+    promptguard_model: str = "meta-llama/Llama-Prompt-Guard-2-86M"
+    screen_threshold: float = 0.5
 
     # target / decoy (the decoy host is owned by Bhageerath and Dan; see TASKS.md)
-    target_kind: str = "mock"          # "docker" | "mock"
+    target_kind: str = "mock"          # docker | mock
     container: str = "agenttrap-decoy"
     reset_each_run: bool = True        # fresh decoy snapshot per run (Q7)
 

@@ -1,10 +1,11 @@
-"""The baseline read-decide-act agent loop (Ujwal's core; see ARCHITECTURE.md).
+"""The read-decide-act agent loop (Ujwal's core; see ARCHITECTURE.md).
 
 run_agent(config) -> RunResult is the single entry point the run harness calls
 (Q2). One step: read the last command output, ask the model for the next
 command, run it, observe. The loop ends on root (success), give-up, a detected
-loop, or an exhausted budget. Every step is logged to JSONL (Q5); the summary
-RunResult feeds TSR, DSR, and GBR (PRD.md).
+loop, or an exhausted budget. In hardened runs, each observation is screened by
+PromptGuard 2 before the model sees it (Phase B). Every step is logged to JSONL
+(Q5); the summary RunResult feeds TSR, DSR, and GBR (PRD.md).
 """
 from __future__ import annotations
 
@@ -13,7 +14,8 @@ import re
 import time
 
 from .config import RunConfig
-from .llm import ChatReply, OllamaClient
+from .llm import ChatReply, build_backend
+from .screen import build_screen
 from .targets import DockerExecTarget, MockTarget, Target
 from .prompts import HARDENED_SYSTEM, PLAIN_SYSTEM
 from .results import (OUTCOME_BUDGET, OUTCOME_ERROR, OUTCOME_GAVE_UP,
@@ -24,20 +26,15 @@ CMD_RE = re.compile(r"<cmd>(.*?)</cmd>", re.DOTALL | re.IGNORECASE)
 DONE_RE = re.compile(r"<done>(.*?)</done>", re.DOTALL | re.IGNORECASE)
 LOOP_THRESHOLD = 4   # same command this many times means looped
 _PROSE_STARTS = ("i ", "the ", "let", "first", "now", "to ", "we ")
-
-
-def _build_llm(config: RunConfig) -> OllamaClient:
-    return OllamaClient(config.model, config.ollama_host, config.temperature)
+_WITHHELD = "[input flagged by PromptGuard 2 and withheld]"
 
 
 def _build_target(config: RunConfig) -> Target:
     if config.target_kind == "docker":
         return DockerExecTarget(
-            container=config.container,
-            root_check_cmd=config.root_check_cmd,
+            container=config.container, root_check_cmd=config.root_check_cmd,
             root_check_expect=config.root_check_expect,
-            reset_each_run=config.reset_each_run,
-        )
+            reset_each_run=config.reset_each_run)
     return MockTarget(root_flag=config.root_flag)
 
 
@@ -49,7 +46,6 @@ def _parse_action(text: str) -> tuple[str, str]:
     m = CMD_RE.search(text)
     if m:
         return "cmd", m.group(1).strip()
-    # Fallback: a bare one-line command with no tags.
     stripped = text.strip()
     line = stripped.splitlines()[0].strip() if stripped else ""
     if line and not line.lower().startswith(_PROSE_STARTS):
@@ -58,8 +54,9 @@ def _parse_action(text: str) -> tuple[str, str]:
 
 
 def run_agent(config: RunConfig, llm=None, target: Target | None = None) -> RunResult:
-    llm = llm or _build_llm(config)
+    llm = llm or build_backend(config)
     target = target or _build_target(config)
+    screen = build_screen(config)
 
     logger = StepLogger(config.results_dir, config.run_id)
     result = RunResult(run_id=config.run_id, cell=config.cell(), model=config.model,
@@ -76,6 +73,7 @@ def run_agent(config: RunConfig, llm=None, target: Target | None = None) -> RunR
     b = config.budgets
     start = time.time()
     total_tokens = 0
+    guardrail_flags = 0
     cmd_counts: Counter[str] = Counter()
     step = 0
 
@@ -100,11 +98,8 @@ def run_agent(config: RunConfig, llm=None, target: Target | None = None) -> RunR
                     prompt_tokens=reply.prompt_tokens,
                     completion_tokens=reply.completion_tokens,
                     note=f"claimed done; rooted={rooted}"))
-                if rooted:
-                    result.success = True
-                    result.outcome = OUTCOME_ROOTED
-                else:
-                    result.outcome = OUTCOME_GAVE_UP
+                result.success = rooted
+                result.outcome = OUTCOME_ROOTED if rooted else OUTCOME_GAVE_UP
                 break
 
             if kind == "none":
@@ -144,10 +139,21 @@ def run_agent(config: RunConfig, llm=None, target: Target | None = None) -> RunR
                 logger.write(rec)
                 break
 
-            logger.write(rec)
             observation = (f"exit={out.exit_code}\n"
                            f"stdout:\n{out.stdout[:4000]}\n"
                            f"stderr:\n{out.stderr[:1000]}")
+
+            # Hardened runs screen the observation before the model sees it (Phase B).
+            if config.hardened:
+                sres = screen.screen(observation)
+                rec.screened = True
+                if sres.flagged:
+                    rec.flagged = True
+                    guardrail_flags += 1
+                    rec.note = f"screened: flagged ({sres.label} {sres.score:.2f})"
+                    observation = _WITHHELD
+
+            logger.write(rec)
             messages.append({"role": "assistant", "content": reply.content})
             messages.append({"role": "user", "content": observation})
     except Exception as exc:  # noqa: BLE001
@@ -156,6 +162,7 @@ def run_agent(config: RunConfig, llm=None, target: Target | None = None) -> RunR
     finally:
         result.steps_taken = step
         result.total_tokens = total_tokens
+        result.guardrail_flags = guardrail_flags
         result.wall_clock_s = round(time.time() - start, 3)
         logger.close()
         append_run(config.results_dir, result)
