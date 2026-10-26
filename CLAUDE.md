@@ -31,4 +31,5 @@ This is a resilience study of a small local agent. It is not a claim that we "de
 - ARCHITECTURE.md: components and how they connect, the agent loop, model sizing, the Flask-web fallback, sandboxing.
 - README.md: prerequisites, setup, how to run the demo, folder layout, team, license.
 - TASKS.md: task split by person, milestone timeline, the freeze date, coordination.
+- agent/: the pentest agent code (run_agent is the entry point); tests/: mock-based smoke tests.
 - Source material: CHT paper (USENIX Security 2025, DOI 10.5281/zenodo.15601739) and PromptGuard 2 / LlamaFirewall (github.com/meta-llama/PurpleLlama).

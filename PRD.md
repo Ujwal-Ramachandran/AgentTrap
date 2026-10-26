@@ -66,6 +66,6 @@ Non-goals:
 
 - No reverse-shell or active counter-attack (the paper's T6.1). Passive defense only.
 - No claim that guardrails are useless; the PromptGuard 2 result is stated as necessary but not sufficient.
-- No external targets and no network egress.
+- No external targets; no network egress from the decoy sandbox.
 - No academic write-up or publication; this is a course project, so report and slides only.
-- No multi-model or larger-than-8B attacker; one 7 to 8B model at a time.
+- The headline 2x2 uses one local 7 to 8B model via Ollama. Optional hosted or CLI backends (Anthropic, OpenAI, Claude Code, Codex) exist for the stronger-attacker honesty check and for machines without Ollama; they are paid, clearly marked, and not part of the main 2x2.

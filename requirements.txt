@@ -1,0 +1,20 @@
+# AgentTrap Python dependencies. Local and free first, one RTX 4060 (see CLAUDE.md).
+# Phase A (baseline agent loop) runs on the standard library alone with the mock
+# LLM and mock target. Install the line below to drive the primary backend.
+
+# Primary backend: local model via Ollama
+ollama>=0.3.0
+
+# Optional hosted backends (paid; set the matching API key env var). Keep out of
+# the headline 2x2; good for the stronger-attacker honesty check and for people
+# without Ollama. CLI backends (Claude Code / Codex) use their own installed CLI.
+# anthropic>=0.39      # ANTHROPIC_API_KEY
+# openai>=1.40         # OPENAI_API_KEY
+
+# Phase B: PromptGuard 2 screening (gated model on Hugging Face; accept license
+# and set HF auth before first use).
+# transformers>=4.44
+# torch>=2.2
+
+# Phase C: dashboard
+flask>=3.0
