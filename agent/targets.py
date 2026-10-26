@@ -1,21 +1,22 @@
 """Targets: how the agent runs a command against the decoy.
 
-Target is the seam between Ujwal's agent and the decoy host owned by
-Bhageerath and Dan (see TASKS.md). DockerExecTarget runs commands with
-`docker exec` (no network egress needed; see Q3 and ARCHITECTURE.md).
-MockTarget is an in-process fake for the smoke test.
+Target is the seam between Ujwal's agent and the decoy host owned by Bhageerath
+and Dan (see TASKS.md). DockerExecTarget keeps one persistent shell session
+inside the decoy (docker exec -i ... bash), so the working directory, environment,
+and any privilege the agent gains (for example after a sudo escalation) carry
+across commands. MockTarget is an in-process fake for tests.
 
-Note on docker exec: each call is a fresh exec as a fixed user, so privilege
-does not persist across commands. The baseline therefore treats success as flag
-capture (root_flag appears in output). If the decoy build needs persistent
-escalation across commands, we switch to one long-lived shell session; that is
-a known refinement to coordinate with the decoy owners.
+No network egress is needed: the agent drives the shell over docker's stdio.
 """
 from __future__ import annotations
 
 from dataclasses import dataclass
 from typing import Protocol
+import queue
 import subprocess
+import threading
+import time
+import uuid
 
 
 @dataclass
@@ -32,49 +33,103 @@ class Target(Protocol):
 
 
 class DockerExecTarget:
-    """Runs each command in the decoy container via docker exec. The real image,
-    seeded files, and exact win-condition are owned by the decoy build."""
+    """A persistent shell inside the decoy container.
 
-    def __init__(self, container: str, root_check_cmd: str = "",
-                 root_check_expect: str = "0", reset_each_run: bool = True,
-                 user: str = "lowpriv"):
+    One `docker exec -i ... bash` process is kept open and fed commands over
+    stdin; stdout and stderr are merged and read by a background thread, so a
+    per-command timeout never blocks the loop. State persists across commands
+    within a run. reset() optionally runs reset_cmd (the decoy owners' recreate
+    or restore, item 7) and then starts a fresh shell, so nothing leaks between
+    runs (Q7). exec_argv overrides the launch command, which lets tests drive a
+    local bash instead of docker.
+    """
+
+    def __init__(self, container: str, user: str = "lowpriv", reset_cmd: str = "",
+                 root_check_cmd: str = "", root_check_expect: str = "0",
+                 reset_each_run: bool = True, exec_argv: list[str] | None = None):
         self.container = container
+        self.user = user
+        self.reset_cmd = reset_cmd
         self.root_check_cmd = root_check_cmd
         self.root_check_expect = root_check_expect
         self.reset_each_run = reset_each_run
-        self.user = user
+        self.exec_argv = exec_argv or [
+            "docker", "exec", "-i", "-u", user, container, "/bin/bash"]
+        self._proc: subprocess.Popen | None = None
+        self._q: queue.Queue = queue.Queue()
+
+    def _pump(self, proc: subprocess.Popen) -> None:
+        while True:
+            line = proc.stdout.readline()   # type: ignore[union-attr]
+            if line == "":
+                break
+            self._q.put(line)
+        self._q.put(None)                   # EOF sentinel
+
+    def _start_shell(self) -> bool:
+        self._close()
+        self._q = queue.Queue()
+        try:
+            self._proc = subprocess.Popen(
+                self.exec_argv, stdin=subprocess.PIPE, stdout=subprocess.PIPE,
+                stderr=subprocess.STDOUT, text=True, bufsize=1)
+        except FileNotFoundError:
+            self._proc = None
+            return False
+        threading.Thread(target=self._pump, args=(self._proc,), daemon=True).start()
+        return True
 
     def reset(self) -> None:
-        if not self.reset_each_run:
-            return
-        # Restart from the clean image so no state leaks between runs (Q7).
-        subprocess.run(["docker", "restart", self.container],
-                       capture_output=True, text=True)
+        if self.reset_each_run and self.reset_cmd:
+            subprocess.run(self.reset_cmd, shell=True, capture_output=True, text=True)
+        self._start_shell()
 
     def run(self, command: str, timeout_s: float) -> CmdResult:
+        if self._proc is None and not self._start_shell():
+            return CmdResult("", "docker not found or shell failed to start", None)
+
+        sentinel = f"__ATDONE_{uuid.uuid4().hex[:8]}__"
         try:
-            p = subprocess.run(
-                ["docker", "exec", "-u", self.user, self.container,
-                 "bash", "-lc", command],
-                capture_output=True, text=True, timeout=timeout_s,
-            )
-            return CmdResult(p.stdout, p.stderr, p.returncode)
-        except subprocess.TimeoutExpired:
-            return CmdResult("", f"timeout after {timeout_s}s", None)
-        except FileNotFoundError:
-            return CmdResult("", "docker not found on host", None)
+            self._proc.stdin.write(command + "\n")                   # type: ignore[union-attr]
+            self._proc.stdin.write(f"printf '%s%d\\n' {sentinel} $?\n")  # type: ignore[union-attr]
+            self._proc.stdin.flush()                                 # type: ignore[union-attr]
+        except (BrokenPipeError, ValueError) as exc:
+            return CmdResult("", f"shell write failed: {exc}", None)
+
+        lines: list[str] = []
+        deadline = time.time() + timeout_s
+        while True:
+            remaining = deadline - time.time()
+            if remaining <= 0:
+                return CmdResult("".join(lines), f"timeout after {timeout_s}s", None)
+            try:
+                line = self._q.get(timeout=remaining)
+            except queue.Empty:
+                return CmdResult("".join(lines), f"timeout after {timeout_s}s", None)
+            if line is None:
+                return CmdResult("".join(lines), "shell closed", None)
+            if sentinel in line:
+                try:
+                    rc = int(line.strip().split(sentinel, 1)[1])
+                except (ValueError, IndexError):
+                    rc = None
+                return CmdResult("".join(lines), "", rc)
+            lines.append(line)
 
     def is_rooted(self) -> bool:
         if not self.root_check_cmd:
             return False
-        try:
-            p = subprocess.run(
-                ["docker", "exec", self.container, "bash", "-lc", self.root_check_cmd],
-                capture_output=True, text=True, timeout=10,
-            )
-            return self.root_check_expect in (p.stdout or "")
-        except Exception:
-            return False
+        out = self.run(self.root_check_cmd, 10)
+        return self.root_check_expect in out.stdout
+
+    def _close(self) -> None:
+        if self._proc is not None:
+            try:
+                self._proc.stdin.close()      # type: ignore[union-attr]
+                self._proc.terminate()
+            except Exception:
+                pass
+            self._proc = None
 
 
 class MockTarget:

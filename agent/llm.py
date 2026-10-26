@@ -5,16 +5,19 @@ AnthropicBackend and OpenAIBackend are optional hosted backends (paid, network).
 CLIBackend drives a local agent CLI (Claude Code or Codex) in non-interactive
 print mode, treating it as a text model. MockLLM replays a policy for tests.
 
-All expose chat(messages) -> ChatReply, so the loop is backend-agnostic. Local
-and free first: hosted and CLI backends are optional and clearly marked (see
-CLAUDE.md and PRD.md). Every backend imports its dependency lazily, so the mock
-path and the smoke tests need nothing installed.
+All expose chat(messages) -> ChatReply, so the loop is backend-agnostic. Per-call
+limits (max_tokens_per_call, llm_call_timeout_s) are enforced inside the call:
+Ollama caps generation with num_predict and streams so it can stop mid-call when
+the time cap is hit, and the hosted backends cap with max_tokens. Local and free
+first; every backend imports its dependency lazily, so the mock path and the
+smoke tests need nothing installed.
 """
 from __future__ import annotations
 
 from dataclasses import dataclass
 from typing import Callable
 import subprocess
+import time
 
 
 @dataclass
@@ -39,13 +42,17 @@ def messages_to_prompt(messages: list[dict]) -> str:
 
 
 class OllamaBackend:
-    """Primary backend: local Ollama server."""
+    """Primary backend: local Ollama server. Streams the reply so generation is
+    capped by num_predict (tokens) and cut off when llm_call_timeout_s is hit."""
 
     def __init__(self, model: str, host: str = "http://127.0.0.1:11434",
-                 temperature: float = 0.2):
+                 temperature: float = 0.2, num_predict: int = 2048,
+                 call_timeout_s: float = 60.0):
         self.model = model
         self.host = host
         self.temperature = temperature
+        self.num_predict = num_predict
+        self.call_timeout_s = call_timeout_s
         self._client = None
 
     def _lazy(self):
@@ -55,13 +62,23 @@ class OllamaBackend:
         return self._client
 
     def chat(self, messages: list[dict]) -> ChatReply:
-        resp = self._lazy().chat(
-            model=self.model, messages=messages,
-            options={"temperature": self.temperature})
-        content = resp.get("message", {}).get("content", "")
-        return ChatReply(content=content,
-                         prompt_tokens=int(resp.get("prompt_eval_count", 0) or 0),
-                         completion_tokens=int(resp.get("eval_count", 0) or 0))
+        start = time.time()
+        parts: list[str] = []
+        prompt_tokens = completion_tokens = 0
+        stream = self._lazy().chat(
+            model=self.model, messages=messages, stream=True,
+            options={"temperature": self.temperature, "num_predict": self.num_predict})
+        for chunk in stream:
+            parts.append((chunk.get("message") or {}).get("content", ""))
+            if chunk.get("done"):
+                prompt_tokens = int(chunk.get("prompt_eval_count", 0) or 0)
+                completion_tokens = int(chunk.get("eval_count", 0) or 0)
+            if time.time() - start > self.call_timeout_s:
+                break  # live time cap: stop consuming this generation
+        content = "".join(parts)
+        if not completion_tokens:
+            completion_tokens = max(1, len(content) // 4)
+        return ChatReply(content, prompt_tokens, completion_tokens)
 
 
 class AnthropicBackend:
@@ -69,7 +86,7 @@ class AnthropicBackend:
     Good fit for the stronger-attacker honesty check (use a stronger model)."""
 
     def __init__(self, model: str = "claude-haiku-5-5", temperature: float = 0.2,
-                 max_tokens: int = 1024):
+                 max_tokens: int = 2048):
         self.model = model
         self.temperature = temperature
         self.max_tokens = max_tokens
@@ -97,9 +114,11 @@ class AnthropicBackend:
 class OpenAIBackend:
     """Optional hosted backend (paid). Needs OPENAI_API_KEY in the environment."""
 
-    def __init__(self, model: str = "gpt-4o-mini", temperature: float = 0.2):
+    def __init__(self, model: str = "gpt-4o-mini", temperature: float = 0.2,
+                 max_tokens: int = 2048):
         self.model = model
         self.temperature = temperature
+        self.max_tokens = max_tokens
         self._client = None
 
     def _lazy(self):
@@ -110,7 +129,7 @@ class OpenAIBackend:
 
     def chat(self, messages: list[dict]) -> ChatReply:
         resp = self._lazy().chat.completions.create(
-            model=self.model, temperature=self.temperature,
+            model=self.model, temperature=self.temperature, max_tokens=self.max_tokens,
             messages=[{"role": m["role"], "content": m["content"]} for m in messages])
         content = resp.choices[0].message.content or ""
         usage = getattr(resp, "usage", None)
@@ -182,14 +201,20 @@ def default_mock_policy() -> Callable[[list[dict]], str]:
 
 
 def build_backend(config):
-    """Construct the backend named by config.backend. Ollama is primary."""
+    """Construct the backend named by config.backend. Ollama is primary.
+    Per-call token and time caps come from config.budgets."""
     kind = config.backend
+    b = config.budgets
     if kind == "ollama":
-        return OllamaBackend(config.model, config.ollama_host, config.temperature)
+        return OllamaBackend(config.model, config.ollama_host, config.temperature,
+                             num_predict=b.max_tokens_per_call,
+                             call_timeout_s=b.llm_call_timeout_s)
     if kind == "anthropic":
-        return AnthropicBackend(config.model or "claude-haiku-5-5", config.temperature)
+        return AnthropicBackend(config.model or "claude-haiku-5-5", config.temperature,
+                                max_tokens=b.max_tokens_per_call)
     if kind == "openai":
-        return OpenAIBackend(config.model or "gpt-4o-mini", config.temperature)
+        return OpenAIBackend(config.model or "gpt-4o-mini", config.temperature,
+                             max_tokens=b.max_tokens_per_call)
     if kind == "cli":
         return CLIBackend(config.cli_cmd, config.cli_timeout_s, config.cli_prompt_stdin)
     if kind == "mock":
