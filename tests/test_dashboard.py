@@ -27,28 +27,35 @@ class DashboardTests(unittest.TestCase):
     def test_index_served(self):
         r = self.client.get("/")
         self.assertEqual(r.status_code, 200)
-        self.assertIn(b"AgentTrap", r.data)
+        self.assertIn(b"Live Console", r.data)
+        self.assertIn(b"Task Success Rate", r.data)
 
-    def test_run_lifecycle(self):
+    def test_batch_lifecycle(self):
         r = self.client.post("/api/run", json={"backend": "mock", "target": "mock",
-                                               "max_steps": 6})
+                                               "runs": 3, "max_steps": 6})
         self.assertEqual(r.status_code, 200)
-        run_id = r.get_json()["run_id"]
+        body = r.get_json()
+        batch_id, total = body["batch_id"], body["total"]
+        self.assertEqual(total, 3)
 
-        result = None
-        for _ in range(100):  # the run is quick; poll up to ~5s
-            resp = self.client.get(f"/api/result/{run_id}")
+        agg = None
+        for _ in range(100):  # the batch is quick; poll up to ~5s
+            resp = self.client.get(f"/api/batch/{batch_id}")
             if resp.status_code == 200:
-                result = resp.get_json()
-                break
+                agg = resp.get_json()
+                if agg["completed"] == total:
+                    break
             time.sleep(0.05)
-        self.assertIsNotNone(result, "run did not finish in time")
-        self.assertEqual(result["type"], "run_end")
-        self.assertIn(result["outcome"],
-                      ("rooted", "gave_up", "looped", "budget_exhausted", "error"))
+        self.assertIsNotNone(agg, "batch did not produce an aggregate")
+        self.assertEqual(agg["completed"], total)
+        for key in ("tsr", "dsr", "gbr"):
+            self.assertEqual(agg[key]["den"], total)
+            self.assertIn("pct", agg[key])
+        self.assertIn(agg["last_outcome"],
+                      ("Attack Success", "Defense Success", "Timeout"))
 
-    def test_result_pending_is_202(self):
-        resp = self.client.get("/api/result/no-such-run")
+    def test_batch_pending_is_202(self):
+        resp = self.client.get("/api/batch/no-such-batch")
         self.assertEqual(resp.status_code, 202)
 
 

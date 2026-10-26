@@ -1,10 +1,13 @@
 """Flask + SSE dashboard app (Phase C).
 
+Runs a batch of N agent runs and streams the experiment view: live console on the
+left, TSR / DSR / GBR on the right, run progress and outcome around them.
+
 Endpoints:
-  GET  /                      the dashboard page
-  POST /api/run               start a run; body selects backend/target/cell
-  GET  /api/stream/<run_id>   server-sent events for a run (run_start, step, run_end)
-  GET  /api/result/<run_id>   the final RunResult, or 202 while still running
+  GET  /                        the dashboard page
+  POST /api/run                 start a batch; body selects backend/target/cell/runs
+  GET  /api/stream/<batch_id>   server-sent events (run_index, step, run_end, aggregate, batch_end)
+  GET  /api/batch/<batch_id>    the latest aggregate, or 202 before the first run finishes
 
 Ollama is the default backend for real runs; the page also offers the mock
 backend so the dashboard works with no model installed.
@@ -35,6 +38,7 @@ def create_app() -> Flask:
     def api_run():
         body = request.get_json(silent=True) or {}
         backend = body.get("backend", "mock")
+        runs = max(1, int(body.get("runs", 20)))
         cfg = RunConfig(
             backend=backend,
             model=body.get("model") or _DEFAULT_MODEL.get(backend, ""),
@@ -44,31 +48,32 @@ def create_app() -> Flask:
             screen_kind=body.get("screen", "mock"),
             budgets=Budgets(max_steps=int(body.get("max_steps", 20))),
         )
-        run_id = manager.start_run(cfg)
-        return jsonify({"run_id": run_id, "cell": cfg.cell()})
+        batch_id = manager.start_batch(cfg, runs)
+        return jsonify({"batch_id": batch_id, "total": runs,
+                        "model": cfg.model or backend, "cht_on": cfg.cht_on,
+                        "hardened": cfg.hardened})
 
-    @app.get("/api/stream/<run_id>")
-    def api_stream(run_id: str):
+    @app.get("/api/stream/<batch_id>")
+    def api_stream(batch_id: str):
         def gen():
-            q = manager.subscribe(run_id)
+            q = manager.subscribe(batch_id)
             try:
                 while True:
                     event = q.get()
                     yield f"data: {json.dumps(event)}\n\n"
-                    if event.get("type") == "run_end":
+                    if event.get("type") == "batch_end":
                         break
             finally:
-                manager.unsubscribe(run_id, q)
+                manager.unsubscribe(batch_id, q)
 
         return Response(gen(), mimetype="text/event-stream",
-                        headers={"Cache-Control": "no-cache",
-                                 "X-Accel-Buffering": "no"})
+                        headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no"})
 
-    @app.get("/api/result/<run_id>")
-    def api_result(run_id: str):
-        res = manager.result(run_id)
-        if res is not None:
-            return jsonify(res), 200
+    @app.get("/api/batch/<batch_id>")
+    def api_batch(batch_id: str):
+        agg = manager.aggregate(batch_id)
+        if agg is not None:
+            return jsonify(agg), 200
         return jsonify({"status": "running"}), 202
 
     return app
