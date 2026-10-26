@@ -15,14 +15,14 @@ The agent issues a shell command to the decoy host. The host runs it and returns
 
 ## The agent loop
 
-At a high level, one step is: read the latest shell output, decide the next action, run the command, observe the result. The loop ends when the agent roots the host (success), gives up, loops, or hits a step, token, or time budget (failure). The hardened agent adds an input-screening step (PromptGuard 2) and a defense-aware system prompt; it does not change itself mid-run. `run_agent(config) -> RunResult` is the single entry point the run harness calls.
+At a high level, one step is: read the latest shell output, decide the next action, run the command, observe the result. The loop ends when the agent roots the host (success), gives up, loops, or hits a step, token, or time budget (failure). If a reply carries no command, the loop reprompts a bounded number of times before giving up, rather than treating stray prose as a surrender. Long command output is head-and-tail truncated before it is fed back, so a flood cannot push the real content out of context. The hardened agent adds an input-screening step (PromptGuard 2) and a defense-aware system prompt; it does not change itself mid-run. `run_agent(config) -> RunResult` is the single entry point the run harness calls.
 
 ## Code layout (agent/)
 
 - `loop.py`: `run_agent`, the read-decide-act loop, success / give-up / loop / budget outcomes.
 - `config.py`: `RunConfig` and `Budgets` (backend, 2x2 cell, budgets, success condition).
 - `llm.py`: the backend interface and the Ollama, Anthropic, OpenAI, CLI, and mock backends.
-- `targets.py`: the `Target` seam, `DockerExecTarget` (docker exec) and `MockTarget`.
+- `targets.py`: the `Target` seam, `DockerExecTarget` (one persistent `docker exec` shell, so working directory, environment, and gained privilege persist across commands) and `MockTarget`.
 - `screen.py`: input screens, `PromptGuard2Screen`, `NullScreen`, `MockScreen`.
 - `prompts.py`: the plain and defense-aware system prompts.
 - `results.py`: `RunResult`, `StepRecord`, JSONL logging (Q4, Q5).
@@ -31,7 +31,7 @@ At a high level, one step is: read the latest shell output, decide the next acti
 
 ## Model backends
 
-The loop talks to the model through one interface (`chat(messages) -> ChatReply`), so the backend is swappable. Ollama is the default and the only one used for the headline 2x2. The hosted backends (Anthropic, OpenAI) and the CLI backend (Claude Code or Codex in non-interactive print mode) are optional, may cost money, and reach the network; they are meant for the stronger-attacker honesty check and for machines without Ollama, not for the main experiment. A dependency-free mock backend drives the loop in tests and plumbing demos (`--backend mock`). The decoy sandbox stays no-egress regardless; only the agent process reaches a hosted API.
+The loop talks to the model through one interface (`chat(messages) -> ChatReply`), so the backend is swappable. Ollama is the default and the only one used for the headline 2x2. The hosted backends (Anthropic, OpenAI) and the CLI backend (Claude Code or Codex in non-interactive print mode) are optional, may cost money, and reach the network; they are meant for the stronger-attacker honesty check and for machines without Ollama, not for the main experiment. A dependency-free mock backend drives the loop in tests and plumbing demos (`--backend mock`). Per-call limits are enforced inside the call, not just between steps: Ollama caps generation with `num_predict` and streams so it can stop when the per-call time cap is hit, and the hosted backends cap with `max_tokens` (all set from `Budgets`). The decoy sandbox stays no-egress regardless; only the agent process reaches a hosted API.
 
 ## Tech choices and 4060 sizing
 
