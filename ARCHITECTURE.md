@@ -7,7 +7,7 @@ See PRD.md for the experiment and metrics, CLAUDE.md for constraints. This file 
 - **LLM pentest agent**: a Python loop (`agent/`) driving a model through a pluggable backend. Ollama is primary (Qwen3 8B or Llama 3.1 8B, Q4_K_M; local, free). Anthropic, OpenAI, and a Claude Code / Codex CLI backend are optional and paid; see "Model backends" below.
 - **Sandboxed decoy host**: a Linux container or VM with no network egress, seeded with the files, logs, and banners that carry the five techniques.
 - **Hardening**: a defense-aware system prompt plus PromptGuard 2 (22M or 86M DeBERTa) screening the agent's inputs. Applied only in the hardened half of the 2x2.
-- **Flask dashboard** (`dashboard/`): control panel and live view (Flask + server-sent events). It launches runs in background threads and streams each run's events (run_start, step, run_end) from the loop's `on_event` hook to the browser. Endpoints: `POST /api/run`, `GET /api/stream/<run_id>`, `GET /api/result/<run_id>`. The dashboard is not the target.
+- **Flask dashboard** (`dashboard/`): control panel and live view (Flask + server-sent events). It runs a batch of N runs in a background thread and streams each run's events (run_index, step, run_end) plus an aggregate (TSR, DSR, GBR, average runtime, outcome, traps) from the loop's `on_event` hook to the browser. Endpoints: `POST /api/run`, `GET /api/stream/<batch_id>`, `GET /api/batch/<batch_id>`. The dashboard is not the target.
 
 ## How they connect
 

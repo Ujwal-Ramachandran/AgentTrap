@@ -50,7 +50,7 @@ pip install flask
 python -m dashboard.app        # serves http://127.0.0.1:5000
 ```
 
-The dashboard (agent console on the left, live metrics on the right) launches a run from the control bar and streams its events over server-sent events. It works with the mock backend and target, so no model is needed to see it live.
+The dashboard runs a batch of N runs and shows the experiment view live: the agent console on the left, TSR / DSR / GBR on the right, and run progress, runtime, outcome, and traps around them, streamed over server-sent events. It works with the mock backend and target, so no model is needed to see it live.
 
 ## Testing
 
