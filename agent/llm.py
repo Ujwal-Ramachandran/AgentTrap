@@ -67,6 +67,8 @@ class OllamaBackend:
         prompt_tokens = completion_tokens = 0
         stream = self._lazy().chat(
             model=self.model, messages=messages, stream=True,
+            # Try to disable thinking
+            think=False,
             options={"temperature": self.temperature, "num_predict": self.num_predict})
         for chunk in stream:
             parts.append((chunk.get("message") or {}).get("content", ""))

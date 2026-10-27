@@ -30,6 +30,7 @@ class Target(Protocol):
     def reset(self) -> None: ...
     def run(self, command: str, timeout_s: float) -> CmdResult: ...
     def is_rooted(self) -> bool: ...
+    def close(self) -> None: ...
 
 
 class DockerExecTarget:
@@ -56,27 +57,38 @@ class DockerExecTarget:
         self.exec_argv = exec_argv or [
             "docker", "exec", "-i", "-u", user, container, "/bin/bash"]
         self._proc: subprocess.Popen | None = None
+        self._pump_thread: threading.Thread | None = None
+        self._start_error = ""
         self._q: queue.Queue = queue.Queue()
 
     def _pump(self, proc: subprocess.Popen) -> None:
-        while True:
-            line = proc.stdout.readline()   # type: ignore[union-attr]
-            if line == "":
-                break
-            self._q.put(line)
-        self._q.put(None)                   # EOF sentinel
+        try:
+            while True:
+                line = proc.stdout.readline()   # type: ignore[union-attr]
+                if line == b"":
+                    break
+                self._q.put(line)
+        except OSError:
+            # The pipe can be invalidated while the process is being stopped.
+            pass
+        finally:
+            self._q.put(None)                   # EOF sentinel
 
     def _start_shell(self) -> bool:
         self._close()
         self._q = queue.Queue()
+        self._start_error = ""
         try:
             self._proc = subprocess.Popen(
                 self.exec_argv, stdin=subprocess.PIPE, stdout=subprocess.PIPE,
-                stderr=subprocess.STDOUT, text=True, bufsize=1)
-        except FileNotFoundError:
+                stderr=subprocess.STDOUT, bufsize=0)
+        except (FileNotFoundError, OSError) as exc:
             self._proc = None
+            self._start_error = str(exc)
             return False
-        threading.Thread(target=self._pump, args=(self._proc,), daemon=True).start()
+        self._pump_thread = threading.Thread(
+            target=self._pump, args=(self._proc,), daemon=True)
+        self._pump_thread.start()
         return True
 
     def reset(self) -> None:
@@ -86,14 +98,19 @@ class DockerExecTarget:
 
     def run(self, command: str, timeout_s: float) -> CmdResult:
         if self._proc is None and not self._start_shell():
-            return CmdResult("", "docker not found or shell failed to start", None)
+            detail = f": {self._start_error}" if self._start_error else ""
+            return CmdResult("", f"docker not found or shell failed to start{detail}", None)
 
         sentinel = f"__ATDONE_{uuid.uuid4().hex[:8]}__"
         try:
-            self._proc.stdin.write(command + "\n")                   # type: ignore[union-attr]
-            self._proc.stdin.write(f"printf '%s%d\\n' {sentinel} $?\n")  # type: ignore[union-attr]
+            command_bytes = (command.rstrip("\r\n") + "\n").encode("utf-8")
+            sentinel_bytes = (
+                f"printf '%s%d\\n' {sentinel} $?\n".encode("ascii"))
+            self._proc.stdin.write(command_bytes)                    # type: ignore[union-attr]
+            self._proc.stdin.write(sentinel_bytes)                   # type: ignore[union-attr]
             self._proc.stdin.flush()                                 # type: ignore[union-attr]
-        except (BrokenPipeError, ValueError) as exc:
+        except (BrokenPipeError, OSError, ValueError) as exc:
+            self._close()
             return CmdResult("", f"shell write failed: {exc}", None)
 
         lines: list[str] = []
@@ -108,13 +125,14 @@ class DockerExecTarget:
                 return CmdResult("".join(lines), f"timeout after {timeout_s}s", None)
             if line is None:
                 return CmdResult("".join(lines), "shell closed", None)
-            if sentinel in line:
+            text_line = line.decode("utf-8", errors="replace")
+            if sentinel in text_line:
                 try:
-                    rc = int(line.strip().split(sentinel, 1)[1])
+                    rc = int(text_line.strip().split(sentinel, 1)[1])
                 except (ValueError, IndexError):
                     rc = None
                 return CmdResult("".join(lines), "", rc)
-            lines.append(line)
+            lines.append(text_line)
 
     def is_rooted(self) -> bool:
         if not self.root_check_cmd:
@@ -123,13 +141,35 @@ class DockerExecTarget:
         return self.root_check_expect in out.stdout
 
     def _close(self) -> None:
-        if self._proc is not None:
+        proc = self._proc
+        if proc is None:
+            return
+        self._proc = None
+        if proc.stdin is not None:
             try:
-                self._proc.stdin.close()      # type: ignore[union-attr]
-                self._proc.terminate()
-            except Exception:
+                proc.stdin.close()
+            except OSError:
                 pass
-            self._proc = None
+        if proc.poll() is None:
+            try:
+                proc.terminate()
+                proc.wait(timeout=1)
+            except subprocess.TimeoutExpired:
+                proc.kill()
+                proc.wait()
+            except OSError:
+                pass
+        if self._pump_thread is not None:
+            self._pump_thread.join(timeout=1)
+            self._pump_thread = None
+        if proc.stdout is not None:
+            try:
+                proc.stdout.close()
+            except OSError:
+                pass
+
+    def close(self) -> None:
+        self._close()
 
 
 class MockTarget:
@@ -154,3 +194,6 @@ class MockTarget:
 
     def is_rooted(self) -> bool:
         return self._rooted
+
+    def close(self) -> None:
+        pass

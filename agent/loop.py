@@ -221,12 +221,23 @@ def run_agent(config: RunConfig, llm=None, target: Target | None = None,
     except Exception as exc:  # noqa: BLE001
         result.outcome = OUTCOME_ERROR
         result.error = repr(exc)
+        if step == 0:
+            record(StepRecord(
+                step=0, ts=time.time(), command="", stdout="", stderr="",
+                exit_code=None, model_response="",
+                prompt_tokens=0, completion_tokens=0,
+                note=f"run error: {result.error}"))
     finally:
         result.steps_taken = step
         result.total_tokens = total_tokens
         result.guardrail_flags = guardrail_flags
         result.wall_clock_s = round(time.time() - start, 3)
-        logger.close()
-        append_run(config.results_dir, result)
-        _emit(on_event, {"type": "run_end", **result.to_dict()})
+        close_target = getattr(target, "close", None)
+        try:
+            if close_target is not None:
+                close_target()
+        finally:
+            logger.close()
+            append_run(config.results_dir, result)
+            _emit(on_event, {"type": "run_end", **result.to_dict()})
     return result
