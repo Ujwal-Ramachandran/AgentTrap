@@ -7,6 +7,7 @@ local bash, not Docker. Run: python -m unittest tests.test_agent_fixes
 from __future__ import annotations
 
 from pathlib import Path
+import os
 import shutil
 import sys
 import tempfile
@@ -21,7 +22,9 @@ from agent.llm import MockLLM                             # noqa: E402
 from agent.results import OUTCOME_GAVE_UP, OUTCOME_ROOTED  # noqa: E402
 from agent.targets import DockerExecTarget, MockTarget    # noqa: E402
 
-HAVE_BASH = shutil.which("bash") is not None
+BASH = shutil.which("bash")
+# the persistent shell runs inside the Linux decoy; skip the local-bash tests off POSIX
+HAVE_BASH = os.name == "posix" and BASH is not None
 
 
 class ParseAndTruncateTests(unittest.TestCase):
@@ -77,7 +80,7 @@ class OllamaStreamTests(unittest.TestCase):
 @unittest.skipUnless(HAVE_BASH, "bash not available")
 class PersistentShellTests(unittest.TestCase):
     def _target(self, **kw):
-        t = DockerExecTarget(container="x", exec_argv=["/bin/bash"], **kw)
+        t = DockerExecTarget(container="x", exec_argv=[BASH], **kw)
         t.reset()
         return t
 
