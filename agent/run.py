@@ -7,6 +7,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import time
 
 from .config import Budgets, RunConfig
 from .loop import run_agent
@@ -18,6 +19,33 @@ _DEFAULT_MODEL = {
     "cli": "",
     "mock": "",
 }
+
+
+def _live_event(event: dict) -> None:
+    """Print command and token state in the same terminal as the harness."""
+    event_type = event.get("type")
+    if event_type == "run_start":
+        print(f"[{time.strftime('%Y-%m-%d %H:%M:%S')}] "
+              f"run {event.get('run_id')} started", flush=True)
+    elif event_type == "command_start":
+        print(
+            f"[{time.strftime('%Y-%m-%d %H:%M:%S')}] "
+            f"step {event['step']} | command: {event['command']} | "
+            f"step tokens: {event['step_tokens']} "
+            f"(prompt={event['prompt_tokens']}, "
+            f"completion={event['completion_tokens']}) | "
+            f"total tokens: {event['total_tokens']}",
+            flush=True)
+    elif event_type == "step":
+        if event.get("exit_code") is not None:
+            print(f"  -> exit={event['exit_code']}", flush=True)
+        elif event.get("note"):
+            print(f"  -> {event['note']}", flush=True)
+    elif event_type == "run_end":
+        print(f"[{time.strftime('%Y-%m-%d %H:%M:%S')}] "
+              f"run ended: outcome={event.get('outcome')}, "
+              f"steps={event.get('steps_taken')}, "
+              f"total tokens={event.get('total_tokens')}", flush=True)
 
 
 def main(argv=None) -> None:
@@ -34,6 +62,8 @@ def main(argv=None) -> None:
     ap.add_argument("--max-steps", type=int, default=30)
     ap.add_argument("--results-dir", default="results")
     ap.add_argument("--run-id", default=None)
+    ap.add_argument("--no-live", action="store_true",
+                    help="disable live command and token output")
     args = ap.parse_args(argv)
 
     cfg = RunConfig(
@@ -45,7 +75,7 @@ def main(argv=None) -> None:
     if args.run_id:
         cfg.run_id = args.run_id
 
-    result = run_agent(cfg)
+    result = run_agent(cfg, on_event=None if args.no_live else _live_event)
     print(json.dumps(result.to_dict(), indent=2))
 
 

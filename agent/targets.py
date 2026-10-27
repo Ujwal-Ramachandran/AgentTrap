@@ -17,6 +17,7 @@ import subprocess
 import threading
 import time
 import uuid
+import re
 
 
 @dataclass
@@ -102,8 +103,9 @@ class DockerExecTarget:
             return CmdResult("", f"docker not found or shell failed to start{detail}", None)
 
         sentinel = f"__ATDONE_{uuid.uuid4().hex[:8]}__"
+        command_to_run = _make_noninteractive(command)
         try:
-            command_bytes = (command.rstrip("\r\n") + "\n").encode("utf-8")
+            command_bytes = (command_to_run.rstrip("\r\n") + "\n").encode("utf-8")
             sentinel_bytes = (
                 f"printf '%s%d\\n' {sentinel} $?\n".encode("ascii"))
             self._proc.stdin.write(command_bytes)                    # type: ignore[union-attr]
@@ -170,6 +172,22 @@ class DockerExecTarget:
 
     def close(self) -> None:
         self._close()
+
+
+_INTERACTIVE_COMMAND_RE = re.compile(
+    r"(?<![\w/-])(?:su|sudo|passwd|ssh|scp|sftp)(?![\w-])")
+
+
+def _make_noninteractive(command: str) -> str:
+    """Prevent common interactive tools from consuming the persistent shell.
+
+    This does not deny the command or decide whether it is useful. It only
+    gives stdin EOF, so a mistaken interactive attempt fails quickly and its
+    real output is returned to the model for adaptation.
+    """
+    if _INTERACTIVE_COMMAND_RE.search(command):
+        return f"{command.rstrip()} </dev/null"
+    return command
 
 
 class MockTarget:

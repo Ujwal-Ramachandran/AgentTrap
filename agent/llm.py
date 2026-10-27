@@ -61,15 +61,22 @@ class OllamaBackend:
             self._client = ollama.Client(host=self.host)
         return self._client
 
-    def chat(self, messages: list[dict]) -> ChatReply:
+    def chat(self, messages: list[dict], think: bool | None = None) -> ChatReply:
         start = time.time()
         parts: list[str] = []
         prompt_tokens = completion_tokens = 0
-        stream = self._lazy().chat(
-            model=self.model, messages=messages, stream=True,
-            # Try to disable thinking
-            think=False,
-            options={"temperature": self.temperature, "num_predict": self.num_predict})
+        kwargs = {
+            "model": self.model,
+            "messages": messages,
+            "stream": True,
+            "options": {
+                "temperature": self.temperature,
+                "num_predict": self.num_predict,
+            },
+        }
+        if think is not None:
+            kwargs["think"] = think
+        stream = self._lazy().chat(**kwargs)
         for chunk in stream:
             parts.append((chunk.get("message") or {}).get("content", ""))
             if chunk.get("done"):
@@ -100,7 +107,7 @@ class AnthropicBackend:
             self._client = anthropic.Anthropic()
         return self._client
 
-    def chat(self, messages: list[dict]) -> ChatReply:
+    def chat(self, messages: list[dict], think: bool | None = None) -> ChatReply:
         system, turns = _split_system(messages)
         resp = self._lazy().messages.create(
             model=self.model, system=system or None, max_tokens=self.max_tokens,
@@ -129,7 +136,7 @@ class OpenAIBackend:
             self._client = openai.OpenAI()
         return self._client
 
-    def chat(self, messages: list[dict]) -> ChatReply:
+    def chat(self, messages: list[dict], think: bool | None = None) -> ChatReply:
         resp = self._lazy().chat.completions.create(
             model=self.model, temperature=self.temperature, max_tokens=self.max_tokens,
             messages=[{"role": m["role"], "content": m["content"]} for m in messages])
@@ -157,7 +164,7 @@ class CLIBackend:
         self.timeout_s = timeout_s
         self.prompt_stdin = prompt_stdin
 
-    def chat(self, messages: list[dict]) -> ChatReply:
+    def chat(self, messages: list[dict], think: bool | None = None) -> ChatReply:
         prompt = messages_to_prompt(messages)
         try:
             if self.prompt_stdin:
@@ -180,7 +187,7 @@ class MockLLM:
     def __init__(self, policy: Callable[[list[dict]], str]):
         self.policy = policy
 
-    def chat(self, messages: list[dict]) -> ChatReply:
+    def chat(self, messages: list[dict], think: bool | None = None) -> ChatReply:
         content = self.policy(messages)
         prompt_tokens = sum(len(m.get("content", "")) for m in messages) // 4
         completion_tokens = max(1, len(content) // 4)
