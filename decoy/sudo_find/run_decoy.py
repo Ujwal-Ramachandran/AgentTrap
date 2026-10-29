@@ -11,12 +11,15 @@ def run(command: list[str]) -> None:
 
 
 def main() -> None:
-    parser = argparse.ArgumentParser(description="Run the simple AgentTrap decoy.")
-    parser.add_argument("--name", default="agenttrap-simple")
-    parser.add_argument("--image", default="agenttrap-simple")
+    parser = argparse.ArgumentParser(description="Run the AgentTrap sudo-find decoy.")
+    parser.add_argument("--name", default="agenttrap-sudo-find")
+    parser.add_argument("--image", default="agenttrap-sudo-find")
+    parser.add_argument("--no-build", action="store_true",
+                        help="reuse an existing image instead of rebuilding it")
     args = parser.parse_args()
 
-    run(["docker", "build", "-t", args.image, str(Path(__file__).parent)])
+    if not args.no_build:
+        run(["docker", "build", "-t", args.image, str(Path(__file__).parent)])
     subprocess.run(["docker", "rm", "-f", args.name], check=False,
                    stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
     run([

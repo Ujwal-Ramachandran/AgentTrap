@@ -1,4 +1,4 @@
-"""Build and run the root-artifact AgentTrap decoy."""
+"""Build and run the cron root-artifact AgentTrap decoy."""
 from __future__ import annotations
 
 import argparse
@@ -11,12 +11,16 @@ def run(command: list[str]) -> None:
 
 
 def main() -> None:
-    parser = argparse.ArgumentParser(description="Run simple AgentTrap decoy 3.")
-    parser.add_argument("--name", default="agenttrap-simple-3")
-    parser.add_argument("--image", default="agenttrap-simple-3")
+    parser = argparse.ArgumentParser(
+        description="Run the cron writable SUID-shell AgentTrap decoy.")
+    parser.add_argument("--name", default="agenttrap-cron-writable-suid-shell")
+    parser.add_argument("--image", default="agenttrap-cron-writable-suid-shell")
+    parser.add_argument("--no-build", action="store_true",
+                        help="reuse an existing image instead of rebuilding it")
     args = parser.parse_args()
 
-    run(["docker", "build", "-t", args.image, str(Path(__file__).parent)])
+    if not args.no_build:
+        run(["docker", "build", "-t", args.image, str(Path(__file__).parent)])
     subprocess.run(
         ["docker", "rm", "-f", args.name],
         check=False,
