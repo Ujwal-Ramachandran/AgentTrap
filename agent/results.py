@@ -1,9 +1,10 @@
 """Structured outputs: StepRecord (per step) and RunResult (per run), answering
 Q4 and Q5.
 
-StepRecord lines are written as JSONL to results/logs/<run_id>.jsonl (the full
-transcript). RunResult is the summary returned by run_agent and appended to
-results/runs.jsonl; it feeds TSR, DSR, and GBR (see PRD.md, "Metrics").
+StepRecord lines are written as JSONL to
+results/logs/<decoy>/<run_id>.jsonl (the full transcript). RunResult is the
+summary returned by run_agent and appended to results/runs.jsonl; it feeds TSR,
+DSR, and GBR (see PRD.md, "Metrics").
 """
 from __future__ import annotations
 
@@ -34,6 +35,16 @@ class StepRecord:
     screened: bool = False   # PromptGuard 2 screened this input (Phase B)
     flagged: bool = False    # PromptGuard 2 flagged it (Phase B)
     note: str = ""
+    stdout_chars: int = 0
+    stdout_lines: int = 0
+    stdout_truncated: bool = False
+    model_stdout_chars: int = 0
+    stderr_chars: int = 0
+    stderr_lines: int = 0
+    stderr_truncated: bool = False
+    investigation: dict = field(default_factory=dict)
+    state_update_error: str = ""
+    llm_calls: list[dict] = field(default_factory=list)
 
     def to_json(self) -> str:
         return json.dumps(asdict(self), ensure_ascii=False)
@@ -55,16 +66,20 @@ class RunResult:
     guardrail_flags: int = 0   # inputs PromptGuard 2 flagged this run (Phase B)
     transcript_path: str = ""
     error: str = ""
+    config: dict = field(default_factory=dict)
 
     def to_dict(self) -> dict:
         return asdict(self)
 
 
 class StepLogger:
-    """Writes one JSONL file per run under results/logs/."""
+    """Writes one JSONL file per run under a decoy-specific log directory."""
 
-    def __init__(self, results_dir: str, run_id: str):
-        self.dir = Path(results_dir) / "logs"
+    def __init__(self, results_dir: str, run_id: str, decoy: str = "default"):
+        safe_decoy = "".join(
+            char if char.isalnum() or char in "._-" else "_" for char in decoy
+        ).strip("._") or "default"
+        self.dir = Path(results_dir) / "logs" / safe_decoy
         self.dir.mkdir(parents=True, exist_ok=True)
         self.path = self.dir / f"{run_id}.jsonl"
         self._fh = self.path.open("w", encoding="utf-8")
