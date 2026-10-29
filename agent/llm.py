@@ -61,8 +61,10 @@ class OllamaBackend:
             self._client = ollama.Client(host=self.host)
         return self._client
 
-    def chat(self, messages: list[dict], think: bool | None = None) -> ChatReply:
-        start = time.time()
+    def chat(self, messages: list[dict], think: bool | None = None,
+             max_tokens: int | None = None,
+             timeout_s: float | None = None) -> ChatReply:
+        start = time.monotonic()
         parts: list[str] = []
         prompt_tokens = completion_tokens = 0
         kwargs = {
@@ -71,19 +73,25 @@ class OllamaBackend:
             "stream": True,
             "options": {
                 "temperature": self.temperature,
-                "num_predict": self.num_predict,
+                "num_predict": min(self.num_predict, max_tokens) if max_tokens is not None else self.num_predict,
             },
         }
         if think is not None:
             kwargs["think"] = think
         stream = self._lazy().chat(**kwargs)
-        for chunk in stream:
-            parts.append((chunk.get("message") or {}).get("content", ""))
-            if chunk.get("done"):
-                prompt_tokens = int(chunk.get("prompt_eval_count", 0) or 0)
-                completion_tokens = int(chunk.get("eval_count", 0) or 0)
-            if time.time() - start > self.call_timeout_s:
-                break  # live time cap: stop consuming this generation
+        limit = min(self.call_timeout_s, timeout_s) if timeout_s is not None else self.call_timeout_s
+        try:
+            for chunk in stream:
+                parts.append((chunk.get("message") or {}).get("content", ""))
+                if chunk.get("done"):
+                    prompt_tokens = int(chunk.get("prompt_eval_count", 0) or 0)
+                    completion_tokens = int(chunk.get("eval_count", 0) or 0)
+                if time.monotonic() - start > limit:
+                    break
+        finally:
+            close = getattr(stream, "close", None)
+            if close is not None:
+                close()
         content = "".join(parts)
         if not completion_tokens:
             completion_tokens = max(1, len(content) // 4)

@@ -61,19 +61,21 @@ class DockerExecTarget:
         self._pump_thread: threading.Thread | None = None
         self._start_error = ""
         self._q: queue.Queue = queue.Queue()
+        self._session_failed = False
 
     def _pump(self, proc: subprocess.Popen) -> None:
+        output_queue = self._q
         try:
             while True:
                 line = proc.stdout.readline()   # type: ignore[union-attr]
                 if line == b"":
                     break
-                self._q.put(line)
-        except OSError:
+                output_queue.put(line)
+        except (OSError, ValueError):
             # The pipe can be invalidated while the process is being stopped.
             pass
         finally:
-            self._q.put(None)                   # EOF sentinel
+            output_queue.put(None)              # EOF sentinel
 
     def _start_shell(self) -> bool:
         self._close()
@@ -93,11 +95,14 @@ class DockerExecTarget:
         return True
 
     def reset(self) -> None:
+        self._session_failed = False
         if self.reset_each_run and self.reset_cmd:
             subprocess.run(self.reset_cmd, shell=True, capture_output=True, text=True)
         self._start_shell()
 
     def run(self, command: str, timeout_s: float) -> CmdResult:
+        if self._session_failed:
+            return CmdResult("", "shell session invalidated; reset required", None)
         if self._proc is None and not self._start_shell():
             detail = f": {self._start_error}" if self._start_error else ""
             return CmdResult("", f"docker not found or shell failed to start{detail}", None)
@@ -105,9 +110,12 @@ class DockerExecTarget:
         sentinel = f"__ATDONE_{uuid.uuid4().hex[:8]}__"
         command_to_run = _make_noninteractive(command)
         try:
-            command_bytes = (command_to_run.rstrip("\r\n") + "\n").encode("utf-8")
+            # Merge streams inside the container, before Docker transports them.
+            # A brace group preserves cwd/environment in the persistent shell.
+            command_bytes = ("{\n" + command_to_run.rstrip("\r\n")
+                             + "\n} 2>&1\n").encode("utf-8")
             sentinel_bytes = (
-                f"printf '%s%d\\n' {sentinel} $?\n".encode("ascii"))
+                f"printf '\\n%s%d\\n' {sentinel} $?\n".encode("ascii"))
             self._proc.stdin.write(command_bytes)                    # type: ignore[union-attr]
             self._proc.stdin.write(sentinel_bytes)                   # type: ignore[union-attr]
             self._proc.stdin.flush()                                 # type: ignore[union-attr]
@@ -116,14 +124,18 @@ class DockerExecTarget:
             return CmdResult("", f"shell write failed: {exc}", None)
 
         lines: list[str] = []
-        deadline = time.time() + timeout_s
+        deadline = time.monotonic() + timeout_s
         while True:
-            remaining = deadline - time.time()
+            remaining = deadline - time.monotonic()
             if remaining <= 0:
+                self._close()
+                self._session_failed = True
                 return CmdResult("".join(lines), f"timeout after {timeout_s}s", None)
             try:
                 line = self._q.get(timeout=remaining)
             except queue.Empty:
+                self._close()
+                self._session_failed = True
                 return CmdResult("".join(lines), f"timeout after {timeout_s}s", None)
             if line is None:
                 return CmdResult("".join(lines), "shell closed", None)
@@ -133,14 +145,16 @@ class DockerExecTarget:
                     rc = int(text_line.strip().split(sentinel, 1)[1])
                 except (ValueError, IndexError):
                     rc = None
-                return CmdResult("".join(lines), "", rc)
+                output = "".join(lines)
+                # Remove only the framing newline, retaining command output.
+                return CmdResult(output[:-1] if output.endswith("\n") else output, "", rc)
             lines.append(text_line)
 
-    def is_rooted(self) -> bool:
+    def is_rooted(self, timeout_s: float = 10.0) -> bool:
         if not self.root_check_cmd:
             return False
-        out = self.run(self.root_check_cmd, 10)
-        return self.root_check_expect in out.stdout
+        out = self.run(self.root_check_cmd, timeout_s)
+        return out.exit_code == 0 and out.stdout.strip() == self.root_check_expect.strip()
 
     def _close(self) -> None:
         proc = self._proc

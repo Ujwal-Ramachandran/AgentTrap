@@ -121,6 +121,83 @@ class OutcomeTests(unittest.TestCase):
         self.assertEqual(res.outcome, OUTCOME_ERROR)
         self.assertIn("model exploded", res.error)
 
+    def test_command_start_event_contains_live_token_state(self):
+        events = []
+        res = run_agent(
+            cfg(self.tmp),
+            llm=scripted("<cmd>id</cmd>"),
+            target=MockTarget(),
+            on_event=events.append,
+        )
+        command_event = next(e for e in events if e["type"] == "command_start")
+        self.assertEqual(command_event["command"], "id")
+        self.assertEqual(
+            command_event["step_tokens"],
+            command_event["prompt_tokens"] + command_event["completion_tokens"],
+        )
+        self.assertLessEqual(command_event["total_tokens"], res.total_tokens)
+
+    def test_budget_exhaustion_falls_back_without_thinking(self):
+        calls = []
+
+        class FallbackLLM:
+            def chat(self, messages, think=None):
+                calls.append(think)
+                if think is None:
+                    return type("Reply", (), {
+                        "content": "",
+                        "prompt_tokens": 10,
+                        "completion_tokens": 2048,
+                    })()
+                return type("Reply", (), {
+                    "content": "<cmd>sudo cat /root/flag</cmd>",
+                    "prompt_tokens": 10,
+                    "completion_tokens": 8,
+                })()
+
+        target = MockTarget(script={"sudo cat /root/flag": "FLAG{fallback}"})
+        res = run_agent(cfg(self.tmp), llm=FallbackLLM(), target=target)
+        self.assertTrue(res.success)
+        self.assertEqual(calls, [None, False])
+        records = [json.loads(line) for line in Path(res.transcript_path).read_text().splitlines()]
+        self.assertEqual(len(records[0]['llm_calls']), 2)
+        self.assertEqual(records[0]['prompt_tokens'], 20)
+        self.assertEqual(records[0]['completion_tokens'], 2056)
+        self.assertEqual(res.total_tokens, sum(
+            row['prompt_tokens'] + row['completion_tokens'] for row in records))
+        self.assertEqual(res.config['budgets']['max_steps'], 10)
+
+    def test_exhausted_generation_does_not_fallback_or_execute(self):
+        from agent.llm import ChatReply
+        from unittest.mock import Mock
+        llm = Mock()
+        llm.chat.return_value = ChatReply('', 10, 2048)
+        target = Mock(wraps=MockTarget())
+        res = run_agent(cfg(self.tmp, budgets=Budgets(max_tokens=2058)),
+                        llm=llm, target=target)
+        self.assertEqual(res.outcome, OUTCOME_BUDGET)
+        self.assertEqual(llm.chat.call_count, 1)
+        target.run.assert_not_called()
+        records = [json.loads(line) for line in Path(res.transcript_path).read_text().splitlines()]
+        self.assertEqual(records[0]['prompt_tokens'] + records[0]['completion_tokens'],
+                         res.total_tokens)
+
+    def test_generation_past_deadline_does_not_execute(self):
+        from agent.llm import ChatReply
+        from unittest.mock import Mock, patch
+        clock = [0.0]
+        llm = Mock()
+        def chat(_messages):
+            clock[0] = 11.0
+            return ChatReply('<cmd>id</cmd>', 1, 1)
+        llm.chat.side_effect = chat
+        target = Mock(wraps=MockTarget())
+        with patch('agent.loop.time.monotonic', side_effect=lambda: clock[0]):
+            res = run_agent(cfg(self.tmp, budgets=Budgets(wall_clock_cap_s=10)),
+                            llm=llm, target=target)
+        self.assertEqual(res.outcome, OUTCOME_BUDGET)
+        target.run.assert_not_called()
+
 
 class HardeningTests(unittest.TestCase):
     def setUp(self):

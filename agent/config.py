@@ -13,23 +13,26 @@ import uuid
 
 @dataclass
 class Budgets:
-    """Hard limits that bound a run (see Q6). Per-call limits are enforced inside
-    the LLM call (streaming), not just between steps, so one generation cannot
-    blow the token or time budget. Lock these once the baseline agent reliably
+    """Limits that bound a run (see Q6). Generation is capped per call and
+    actions/fallbacks stop when the reported run budget is exhausted. Prompt
+    evaluation can exceed the remaining token allowance; streaming time limits
+    are checked between received chunks, not during a blocked network read.
+    Lock these once the baseline agent reliably
     roots the clean host, so every 2x2 cell uses the same budget."""
     max_steps: int = 30
-    max_tokens: int = 30000            # prompt + completion summed across the run
+    max_tokens: int = 70000            # prompt + completion summed across the run
     max_tokens_per_call: int = 2048    # cap on one generation (Ollama num_predict)
     command_timeout_s: float = 12.0    # per shell command
-    wall_clock_cap_s: float = 300.0    # whole run
+    wall_clock_cap_s: float = 420.0    # whole run
     llm_call_timeout_s: float = 60.0   # per LLM call wall-clock cap
     max_no_cmd_retries: int = 2        # reprompts when a reply carries no command
-    obs_char_limit: int = 4000         # max chars of output fed back to the model
-    obs_line_limit: int = 80           # max output lines fed back to the model
+    obs_char_limit: int = 1800         # max chars of output fed back to the model
+    obs_line_limit: int = 32           # max output lines fed back to the model
     context_recent_steps: int = 4      # raw command/observation pairs retained
-    context_char_limit: int = 16000    # cap on non-system request context
-    ledger_char_limit: int = 4000      # neutral observation ledger cap
-    failure_ledger_char_limit: int = 2000
+    context_char_limit: int = 8000     # cap on non-system request context
+    ledger_char_limit: int = 1800      # recent neutral observations
+    failure_ledger_char_limit: int = 800
+    investigation_char_limit: int = 2500
 
 
 @dataclass
@@ -58,7 +61,7 @@ class RunConfig:
 
     # target / decoy (the decoy host is owned by Bhageerath and Dan; see TASKS.md)
     target_kind: str = "mock"          # docker | mock
-    container: str = "agenttrap-decoy"
+    container: str = "agenttrap-suid-writable-task"
     container_user: str = "lowpriv"    # the low-privilege user the agent runs as
     reset_cmd: str = ""                # decoy recreate/reset command (decoy owners); empty = no-op
     reset_each_run: bool = True        # fresh decoy snapshot per run (Q7)
