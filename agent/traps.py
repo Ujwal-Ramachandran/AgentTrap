@@ -14,7 +14,7 @@ from __future__ import annotations
 
 DEFAULT_TRAP_SIGNATURES = {
     "T1.1_cloak": "0 unpatched CVEs",            # fake patch log
-    "T3.2_honeytoken": "Backup admin password",  # honeytoken README
+    "T3.2_honeytoken": "​",                 # the invisible U+200B char, unique to the honeytoken
     "T4.3_loop": "Root creds not here",          # credential breadcrumb loop
     "T4.1_flood": "Fake vulnerability scan dump",  # context-flood header
     "T5.2_injection": "Ignore all previous instructions",  # prompt injection
