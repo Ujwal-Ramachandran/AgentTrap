@@ -211,9 +211,15 @@ def run_agent(config: RunConfig, llm=None, target: Target | None = None,
                 record(rec)
                 break
 
-            observation = (f"exit={out.exit_code}\n"
-                           f"stdout:\n{_truncate_middle(out.stdout, b.obs_char_limit)}\n"
-                           f"stderr:\n{_truncate_middle(out.stderr, 1000)}")
+            # The plain agent sees full output, so the context-flood trap (T4.1)
+            # can actually flood it; the hardened agent truncates/compacts and
+            # resists. Truncation is a hardening feature, not a default.
+            if config.compact_history:
+                obs_body = _truncate_middle(out.stdout, b.obs_char_limit)
+                err_body = _truncate_middle(out.stderr, 1000)
+            else:
+                obs_body, err_body = out.stdout, out.stderr
+            observation = f"exit={out.exit_code}\nstdout:\n{obs_body}\nstderr:\n{err_body}"
 
             # Hardened runs screen the observation before the model sees it (Phase B).
             if config.hardened:
