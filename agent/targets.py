@@ -70,9 +70,12 @@ class DockerExecTarget:
         self._close()
         self._q = queue.Queue()
         try:
+            # encoding/errors pinned so Windows' default cp1252 does not choke on
+            # the container's UTF-8 output; newline handled via reconfigure below.
             self._proc = subprocess.Popen(
                 self.exec_argv, stdin=subprocess.PIPE, stdout=subprocess.PIPE,
-                stderr=subprocess.STDOUT, text=True, bufsize=1)
+                stderr=subprocess.STDOUT, text=True, bufsize=1,
+                encoding="utf-8", errors="replace")
         except FileNotFoundError:
             self._proc = None
             return False
