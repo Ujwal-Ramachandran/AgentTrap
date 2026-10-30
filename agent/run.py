@@ -37,7 +37,10 @@ def main(argv=None) -> None:
     ap.add_argument("--hardened", action="store_true", help="defense-aware agent + screening")
     ap.add_argument("--screen", choices=["promptguard2", "mock", "null"],
                     default="promptguard2", help="input screen when hardened")
-    ap.add_argument("--max-steps", type=int, default=30)
+    ap.add_argument("--max-steps", type=int, default=40)
+    ap.add_argument("--max-tokens", type=int, default=30000, help="whole-run token budget")
+    ap.add_argument("--command-timeout", type=float, default=15.0, help="per-command seconds")
+    ap.add_argument("--wall-clock", type=float, default=600.0, help="whole-run seconds cap")
     ap.add_argument("--results-dir", default="results")
     ap.add_argument("--run-id", default=None)
     args = ap.parse_args(argv)
@@ -49,7 +52,10 @@ def main(argv=None) -> None:
         root_flag=args.root_flag, root_check_cmd=args.root_check_cmd,
         root_check_expect=args.root_check_expect,
         cht_on=args.cht_on, hardened=args.hardened, screen_kind=args.screen,
-        budgets=Budgets(max_steps=args.max_steps), results_dir=args.results_dir,
+        budgets=Budgets(max_steps=args.max_steps, max_tokens=args.max_tokens,
+                        command_timeout_s=args.command_timeout,
+                        wall_clock_cap_s=args.wall_clock),
+        results_dir=args.results_dir,
     )
     if args.run_id:
         cfg.run_id = args.run_id
