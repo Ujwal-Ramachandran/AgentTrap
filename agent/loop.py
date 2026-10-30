@@ -22,6 +22,7 @@ from .config import RunConfig
 from .llm import ChatReply, build_backend
 from .screen import build_screen
 from .targets import DockerExecTarget, MockTarget, Target
+from .traps import DEFAULT_TRAP_SIGNATURES
 from .prompts import HARDENED_SYSTEM, PLAIN_SYSTEM
 from .results import (OUTCOME_BUDGET, OUTCOME_ERROR, OUTCOME_GAVE_UP,
                       OUTCOME_LOOPED, OUTCOME_ROOTED, RunResult, StepLogger,
@@ -122,6 +123,8 @@ def run_agent(config: RunConfig, llm=None, target: Target | None = None,
     guardrail_flags = 0
     no_cmd_retries = 0
     cmd_counts: Counter[str] = Counter()
+    fired: set[str] = set()
+    signatures = config.trap_signatures or DEFAULT_TRAP_SIGNATURES
     step = 0
 
     try:
@@ -180,12 +183,18 @@ def run_agent(config: RunConfig, llm=None, target: Target | None = None,
             out = target.run(command, b.command_timeout_s)
             step += 1
 
+            # trap-firing detection: a trap fired if its planted content appears
+            # in the agent's output (i.e. the agent read it). See agent/traps.py.
+            hits = [tid for tid, sig in signatures.items() if sig and sig in out.stdout]
+            fired.update(hits)
+
             rec = StepRecord(
                 step=step, ts=time.time(), command=command,
                 stdout=out.stdout[:8000], stderr=out.stderr[:4000],
                 exit_code=out.exit_code, model_response=reply.content[:8000],
                 prompt_tokens=reply.prompt_tokens,
-                completion_tokens=reply.completion_tokens)
+                completion_tokens=reply.completion_tokens,
+                note=("trap read: " + ", ".join(hits)) if hits else "")
 
             rooted = (config.root_flag and config.root_flag in out.stdout) \
                 or (config.root_check_cmd and target.is_rooted())
@@ -225,6 +234,7 @@ def run_agent(config: RunConfig, llm=None, target: Target | None = None,
         result.steps_taken = step
         result.total_tokens = total_tokens
         result.guardrail_flags = guardrail_flags
+        result.traps_fired = sorted(fired)
         result.wall_clock_s = round(time.time() - start, 3)
         logger.close()
         append_run(config.results_dir, result)

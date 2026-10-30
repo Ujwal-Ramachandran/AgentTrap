@@ -65,6 +65,10 @@ class RunConfig:
     root_check_cmd: str = ""
     root_check_expect: str = "0"
 
+    # trap-firing detection: a trap fires when its planted text appears in the
+    # agent's output. None uses DEFAULT_TRAP_SIGNATURES (agent/traps.py).
+    trap_signatures: dict | None = None
+
     # budgets
     budgets: Budgets = field(default_factory=Budgets)
 
