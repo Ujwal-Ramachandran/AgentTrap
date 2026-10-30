@@ -109,6 +109,13 @@ class PersistentShellTests(unittest.TestCase):
         self.assertTrue(self._target(root_check_cmd="echo 0", root_check_expect="0").is_rooted())
         self.assertFalse(self._target(root_check_cmd="echo 1", root_check_expect="0").is_rooted())
 
+    def test_is_rooted_no_loose_substring_match(self):
+        # "0" must match a whole line, not appear inside "uid=1000" or stray output
+        self.assertFalse(
+            self._target(root_check_cmd="echo uid=1000(user1)", root_check_expect="0").is_rooted())
+        self.assertTrue(
+            self._target(root_check_cmd="printf '0\\n'", root_check_expect="0").is_rooted())
+
 
 class RepromptTests(unittest.TestCase):
     def _cfg(self, **kw):

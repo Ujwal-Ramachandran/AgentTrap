@@ -76,6 +76,13 @@ class DockerExecTarget:
         except FileNotFoundError:
             self._proc = None
             return False
+        # On Windows, text-mode pipes translate "\n" to "\r\n" on write, which
+        # corrupts every command the Linux shell receives. Force LF so the
+        # container sees clean commands.
+        try:
+            self._proc.stdin.reconfigure(newline="\n")      # type: ignore[union-attr]
+        except Exception:
+            pass
         threading.Thread(target=self._pump, args=(self._proc,), daemon=True).start()
         return True
 
@@ -90,7 +97,7 @@ class DockerExecTarget:
 
         sentinel = f"__ATDONE_{uuid.uuid4().hex[:8]}__"
         try:
-            self._proc.stdin.write(command + "\n")                   # type: ignore[union-attr]
+            self._proc.stdin.write(command.replace("\r", "") + "\n")  # type: ignore[union-attr]
             self._proc.stdin.write(f"printf '%s%d\\n' {sentinel} $?\n")  # type: ignore[union-attr]
             self._proc.stdin.flush()                                 # type: ignore[union-attr]
         except (BrokenPipeError, ValueError) as exc:
@@ -120,7 +127,9 @@ class DockerExecTarget:
         if not self.root_check_cmd:
             return False
         out = self.run(self.root_check_cmd, 10)
-        return self.root_check_expect in out.stdout
+        # match a whole output line, not a loose substring: expect "0" must not
+        # be satisfied by "uid=1000" or stray output.
+        return self.root_check_expect in [ln.strip() for ln in out.stdout.splitlines()]
 
     def _close(self) -> None:
         if self._proc is not None:
