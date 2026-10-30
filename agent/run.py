@@ -27,6 +27,12 @@ def main(argv=None) -> None:
     ap.add_argument("--model", default=None, help="model id (defaults per backend)")
     ap.add_argument("--target", choices=["mock", "docker"], default="mock")
     ap.add_argument("--container", default="agenttrap-decoy")
+    ap.add_argument("--container-user", default="lowpriv", help="low-priv user the agent runs as")
+    ap.add_argument("--reset-cmd", default="", help="shell command to reset the decoy each run")
+    ap.add_argument("--root-flag", default="FLAG{", help="success marker in output (empty to disable)")
+    ap.add_argument("--root-check-cmd", default="",
+                    help="command whose output decides root, e.g. 'id -u' (alt to root-flag)")
+    ap.add_argument("--root-check-expect", default="0", help="substring of root-check-cmd output meaning rooted")
     ap.add_argument("--cht-on", action="store_true", help="decoy seeded with CHT deception")
     ap.add_argument("--hardened", action="store_true", help="defense-aware agent + screening")
     ap.add_argument("--screen", choices=["promptguard2", "mock", "null"],
@@ -39,6 +45,9 @@ def main(argv=None) -> None:
     cfg = RunConfig(
         backend=args.backend, model=args.model or _DEFAULT_MODEL[args.backend],
         target_kind=args.target, container=args.container,
+        container_user=args.container_user, reset_cmd=args.reset_cmd,
+        root_flag=args.root_flag, root_check_cmd=args.root_check_cmd,
+        root_check_expect=args.root_check_expect,
         cht_on=args.cht_on, hardened=args.hardened, screen_kind=args.screen,
         budgets=Budgets(max_steps=args.max_steps), results_dir=args.results_dir,
     )
