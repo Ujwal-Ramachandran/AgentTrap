@@ -193,5 +193,23 @@ class TrapFiringTests(unittest.TestCase):
         self.assertEqual(res.traps_fired, [])
 
 
+class CompactionTests(unittest.TestCase):
+    def test_old_observations_collapsed(self):
+        seen = []
+        n = {"i": 0}
+
+        def policy(messages):
+            seen.append([m["content"] for m in messages])
+            n["i"] += 1
+            return f"<cmd>echo step{n['i']}</cmd>"  # unique, avoids loop detection
+
+        run_agent(RunConfig(target_kind="mock", results_dir=tempfile.mkdtemp(),
+                            compact_history=True, history_keep_last=2,
+                            budgets=Budgets(max_steps=6, wall_clock_cap_s=30)),
+                  llm=MockLLM(policy), target=MockTarget())
+        flat = [c for msgs in seen for c in msgs]
+        self.assertTrue(any(c.startswith("[earlier output omitted") for c in flat))
+
+
 if __name__ == "__main__":
     unittest.main(verbosity=2)

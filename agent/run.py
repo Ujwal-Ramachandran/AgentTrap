@@ -34,7 +34,8 @@ def main(argv=None) -> None:
                     help="command whose output decides root, e.g. 'id -u' (alt to root-flag)")
     ap.add_argument("--root-check-expect", default="0", help="substring of root-check-cmd output meaning rooted")
     ap.add_argument("--cht-on", action="store_true", help="decoy seeded with CHT deception")
-    ap.add_argument("--hardened", action="store_true", help="defense-aware agent + screening")
+    ap.add_argument("--hardened", action="store_true", help="defense-aware agent + screening + compaction")
+    ap.add_argument("--compact", action="store_true", help="collapse old output to bound context (implied by --hardened)")
     ap.add_argument("--screen", choices=["promptguard2", "mock", "null"],
                     default="promptguard2", help="input screen when hardened")
     ap.add_argument("--max-steps", type=int, default=40)
@@ -52,6 +53,7 @@ def main(argv=None) -> None:
         root_flag=args.root_flag, root_check_cmd=args.root_check_cmd,
         root_check_expect=args.root_check_expect,
         cht_on=args.cht_on, hardened=args.hardened, screen_kind=args.screen,
+        compact_history=args.compact or args.hardened,
         budgets=Budgets(max_steps=args.max_steps, max_tokens=args.max_tokens,
                         command_timeout_s=args.command_timeout,
                         wall_clock_cap_s=args.wall_clock),

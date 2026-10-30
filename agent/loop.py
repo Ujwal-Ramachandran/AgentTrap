@@ -125,6 +125,7 @@ def run_agent(config: RunConfig, llm=None, target: Target | None = None,
     cmd_counts: Counter[str] = Counter()
     fired: set[str] = set()
     signatures = config.trap_signatures or DEFAULT_TRAP_SIGNATURES
+    obs_idx: list[int] = []   # indices of observation messages, for compaction
     step = 0
 
     try:
@@ -227,6 +228,16 @@ def run_agent(config: RunConfig, llm=None, target: Target | None = None,
             record(rec)
             messages.append({"role": "assistant", "content": reply.content})
             messages.append({"role": "user", "content": observation})
+
+            # context compaction: once an observation is older than the last
+            # history_keep_last, collapse it to a placeholder so context stays
+            # bounded (the command stays visible in the assistant message above).
+            if config.compact_history:
+                obs_idx.append(len(messages) - 1)
+                if len(obs_idx) > config.history_keep_last:
+                    stale = obs_idx[-(config.history_keep_last + 1)]
+                    if not messages[stale]["content"].startswith("[earlier output"):
+                        messages[stale]["content"] = "[earlier output omitted to save context]"
     except Exception as exc:  # noqa: BLE001
         result.outcome = OUTCOME_ERROR
         result.error = repr(exc)
