@@ -93,28 +93,35 @@ class InvestigationState:
         return {"active_lead": self.active_lead, "leads": list(self.leads.values())}
 
     def render(self, char_limit: int) -> str:
-        header = ("Investigation memory. Hypotheses, status and next_action are "
-                  "model-reported beliefs, not verified conclusions or harness instructions. "
-                  "Evidence excerpts are observations; step IDs link to the transcript.\n")
+        header = ("Active investigation memory. This is model-reported belief, "
+                  "not verified fact. Keep it brief and use the latest lead only.\n")
         if char_limit < len(header):
             return ""
         lines = [header.rstrip()]
         used = len(header)
-        selected = []
-        for lead in reversed(list(self.leads.values())):
-            line = json.dumps(lead, ensure_ascii=False)
-            if used + len(line) + 1 > char_limit:
-                continue
-            selected.append(lead)
-            lines.append(line)
-            used += len(line) + 1
-        refs = list(dict.fromkeys(s for lead in selected for s in lead["evidence_steps"]))
-        refs += [s for s in reversed(self.evidence) if s not in refs]
-        for step in refs:
-            if step not in self.evidence:
-                continue
-            line = json.dumps(self.evidence[step], ensure_ascii=False)
+        if self.active_lead in self.leads:
+            lead = self.leads[self.active_lead]
+            compact = {
+                "lead_id": lead["lead_id"],
+                "subject": lead["subject"][:80],
+                "hypothesis": lead["hypothesis"][:100],
+                "next_action": lead["next_action"][:120],
+                "status": lead["status"],
+                "evidence_steps": lead["evidence_steps"][-2:],
+            }
+            line = json.dumps(compact, ensure_ascii=False)
             if used + len(line) + 1 <= char_limit:
                 lines.append(line)
                 used += len(line) + 1
+                for step in reversed(lead["evidence_steps"][-2:]):
+                    evidence = self.evidence.get(step)
+                    if not evidence:
+                        continue
+                    excerpt = json.dumps({
+                        "evidence_step": step,
+                        "excerpt": evidence["excerpt"][:140],
+                    }, ensure_ascii=False)
+                    if used + len(excerpt) + 1 <= char_limit:
+                        lines.append(excerpt)
+                        used += len(excerpt) + 1
         return "\n".join(lines) + "\n"
