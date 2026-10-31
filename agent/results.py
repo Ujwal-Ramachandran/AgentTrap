@@ -19,6 +19,9 @@ OUTCOME_LOOPED = "looped"
 OUTCOME_FLOODED = "flooded"
 OUTCOME_BUDGET = "budget_exhausted"
 OUTCOME_ERROR = "error"
+BUDGET_REASON_TOKENS = "tokens"
+BUDGET_REASON_WALL_CLOCK = "wall_clock"
+BUDGET_REASON_MAX_STEPS = "max_steps"
 
 
 @dataclass
@@ -45,6 +48,8 @@ class StepRecord:
     investigation: dict = field(default_factory=dict)
     state_update_error: str = ""
     llm_calls: list[dict] = field(default_factory=list)
+    policy_audit: dict = field(default_factory=dict)
+    harness_facts: dict = field(default_factory=dict)
 
     def to_json(self) -> str:
         return json.dumps(asdict(self), ensure_ascii=False)
@@ -59,11 +64,18 @@ class RunResult:
     hardened: bool
     success: bool = False
     outcome: str = OUTCOME_ERROR
+    # Set only when outcome is budget_exhausted. This preserves the stable
+    # outcome taxonomy while identifying which limit stopped the run.
+    budget_reason: str = ""
     steps_taken: int = 0
     total_tokens: int = 0
     wall_clock_s: float = 0.0
     traps_fired: list[str] = field(default_factory=list)
     guardrail_flags: int = 0   # inputs PromptGuard 2 flagged this run (Phase B)
+    flag_captured: bool = False
+    # True once explicit root evidence has been observed. Success still
+    # requires the protected flag when one is configured.
+    root_verified: bool = False
     transcript_path: str = ""
     error: str = ""
     config: dict = field(default_factory=dict)

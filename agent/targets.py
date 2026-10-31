@@ -206,7 +206,7 @@ def _make_noninteractive(command: str) -> str:
 
 class MockTarget:
     """In-process fake decoy for tests. A script maps exact commands to output;
-    the winning command emits the root flag. No Docker, no network."""
+    root status requires explicit UID 0 evidence. No Docker, no network."""
 
     def __init__(self, root_flag: str = "FLAG{", script: dict | None = None):
         self.root_flag = root_flag
@@ -219,7 +219,8 @@ class MockTarget:
     def run(self, command: str, timeout_s: float) -> CmdResult:
         if command in self.script:
             out = self.script[command]
-            if self.root_flag and self.root_flag in out:
+            if re.search(r"(?:^|\n)(?:uid=0\b|euid=0\b|0)(?:\n|$)",
+                         out, re.IGNORECASE):
                 self._rooted = True
             return CmdResult(out, "", 0)
         return CmdResult(f"ran: {command}", "", 0)

@@ -52,6 +52,15 @@ def _live_event(event: dict) -> None:
               f"total tokens={event.get('total_tokens')}", flush=True)
 
 
+def _result_payload(result, full: bool = False) -> dict:
+    """Return the CLI result view without changing the persisted summary."""
+    payload = result.to_dict()
+    if not full:
+        payload.pop("error", None)
+        payload.pop("config", None)
+    return payload
+
+
 _CANONICAL_DECOY_SCRIPTS = {
     "agenttrap-sudo-find": "decoy/sudo_find/run_decoy.py",
     "agenttrap-cron-writable-copy": "decoy/cron_writable_copy/run_decoy.py",
@@ -177,6 +186,8 @@ def main(argv=None) -> None:
                     help="disable live command and token output")
     ap.add_argument("--keep-container", action="store_true",
                     help="keep the Docker container after the run for debugging")
+    ap.add_argument("--full", action="store_true",
+                    help="include full result details, including error and config")
     args = ap.parse_args(argv)
 
     generated_flag = ""
@@ -214,7 +225,7 @@ def main(argv=None) -> None:
                     raise
     if result is None:
         raise RuntimeError("agent run did not produce a result")
-    print(json.dumps(result.to_dict(), indent=2))
+    print(json.dumps(_result_payload(result, full=args.full), indent=2))
 
 
 if __name__ == "__main__":
