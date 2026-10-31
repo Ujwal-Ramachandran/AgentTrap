@@ -269,7 +269,7 @@ def run_agent(config: RunConfig, llm=None, target: Target | None = None,
             else:
                 context_messages = messages
 
-            reply: ChatReply = llm.chat(context_messages)
+            reply: ChatReply = llm.chat(context_messages, think=config.think)
             total_tokens += reply.prompt_tokens + reply.completion_tokens
             kind, payload = _parse_action(reply.content)
             fallback_used = False

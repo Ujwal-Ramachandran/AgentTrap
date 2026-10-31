@@ -78,6 +78,7 @@ def run_cell(cht_on: bool, hardened: bool, args) -> list[dict]:
             backend=args.backend, model=args.model, target_kind=args.target,
             container=args.container, container_user=args.user,
             cht_on=cht_on, hardened=hardened, compact_history=hardened,
+            think=args.think,
             screen_kind=args.screen,
             budgets=Budgets(max_steps=args.max_steps, max_tokens=args.max_tokens),
             results_dir=args.results_dir,
@@ -103,7 +104,9 @@ def main(argv=None) -> None:
     ap.add_argument("--screen", choices=["promptguard2", "mock", "null"], default="promptguard2")
     ap.add_argument("--runs", type=int, default=20)
     ap.add_argument("--max-steps", type=int, default=40)
-    ap.add_argument("--max-tokens", type=int, default=30000)
+    ap.add_argument("--max-tokens", type=int, default=50000)
+    ap.add_argument("--no-think", dest="think", action="store_false", default=None,
+                    help="disable the model's hidden reasoning (fewer tokens per step)")
     ap.add_argument("--results-dir", default="results")
     args = ap.parse_args(argv)
 

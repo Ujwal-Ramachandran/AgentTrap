@@ -41,6 +41,8 @@ class RunConfig:
     model: str = "qwen3:8b"
     ollama_host: str = "http://127.0.0.1:11434"
     temperature: float = 0.2
+    think: bool | None = None   # None = model default; False disables hidden
+                                # reasoning (far fewer tokens per step)
 
     # cli backend (Claude Code or Codex in non-interactive print mode)
     cli_cmd: list[str] = field(default_factory=lambda: ["claude", "-p"])
