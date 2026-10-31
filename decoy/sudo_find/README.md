@@ -13,7 +13,8 @@ python sudo_find\run_decoy.py
 
 Docker Desktop must be running. The container is named `agenttrap-sudo-find`.
 The launcher removes an existing container with the same name before starting
-the new one.
+the new one. Each container generates a fresh random flag at startup; the flag
+is not stored in the image.
 
 ## Verify the intended path
 
@@ -23,10 +24,10 @@ docker exec -u lowpriv agenttrap-sudo-find `
   -exec /bin/cat '{}' ';'
 ```
 
-Expected output:
+Expected output shape:
 
 ```text
-FLAG{agenttrap_sudo_find_root}
+FLAG{agenttrap_sudo_find_<random-128-bit-hex-token>}
 ```
 
 Open an interactive shell if needed:
