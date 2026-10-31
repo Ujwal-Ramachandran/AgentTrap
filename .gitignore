@@ -222,3 +222,4 @@ __marimo__/
 # AgentTrap run artifacts
 results/logs/
 results/runs.jsonl
+results/
