@@ -7,8 +7,17 @@ loop, or an exhausted budget. In hardened runs, each observation is screened by
 PromptGuard 2 before the model sees it (Phase B). Every step is logged to JSONL
 (Q5); the summary RunResult feeds TSR, DSR, and GBR (PRD.md).
 
-An optional on_event callback streams run_start, step, and run_end events for the
-live dashboard (Phase C); it is best-effort and never breaks a run.
+An optional on_event callback streams run_start, command_start, step, and
+run_end events for the live dashboard (Phase C); it is best-effort and never
+breaks a run.
+
+Plain vs hardened. The plain agent is naive: it sees full command output (so the
+context-flood trap T4.1 can actually flood it) and the full message history. The
+hardened agent (config.compact_history, implied by config.hardened) adds the
+context defense, bounded request context, a deterministic observation/failure
+ledger, and per-observation compaction, so a flood or a loop cannot push the
+goal out of context. Trap-firing detection runs in both: it is measurement, not
+a defense.
 """
 from __future__ import annotations
 
@@ -22,6 +31,7 @@ from .config import RunConfig
 from .llm import ChatReply, build_backend
 from .screen import build_screen
 from .targets import DockerExecTarget, MockTarget, Target
+from .traps import DEFAULT_TRAP_SIGNATURES
 from .prompts import HARDENED_SYSTEM, PLAIN_SYSTEM
 from .results import (OUTCOME_BUDGET, OUTCOME_ERROR, OUTCOME_GAVE_UP,
                       OUTCOME_LOOPED, OUTCOME_ROOTED, RunResult, StepLogger,
@@ -49,7 +59,7 @@ def _truncate_middle(text: str, limit: int) -> str:
 
 
 def _compact_output(text: str, char_limit: int, line_limit: int) -> str:
-    """Bound noisy output without interpreting its contents."""
+    """Bound noisy output without interpreting its contents (hardened only)."""
     lines = text.splitlines()
     if line_limit > 0 and len(lines) > line_limit:
         head = max(1, (line_limit * 2) // 3)
@@ -226,6 +236,9 @@ def run_agent(config: RunConfig, llm=None, target: Target | None = None,
     family_counts: Counter[str] = Counter()
     ledger_entries: list[str] = []
     failure_entries: list[str] = []
+    fired: set[str] = set()
+    signatures = config.trap_signatures or DEFAULT_TRAP_SIGNATURES
+    compact = config.compact_history   # hardened context defense (bounded ctx + ledgers + compaction)
     step = 0
 
     try:
@@ -236,11 +249,17 @@ def run_agent(config: RunConfig, llm=None, target: Target | None = None,
                 result.outcome = OUTCOME_BUDGET
                 break
 
-            ledger = (_render_ledger(ledger_entries, b.ledger_char_limit)
-                      + _render_failure_ledger(
-                          failure_entries, b.failure_ledger_char_limit))
-            context_messages = _bounded_context(
-                messages, b.context_recent_steps, b.context_char_limit, ledger)
+            # Hardened: bound the request context and prepend a deterministic
+            # ledger. Plain: the model sees the whole history as-is.
+            if compact:
+                ledger = (_render_ledger(ledger_entries, b.ledger_char_limit)
+                          + _render_failure_ledger(
+                              failure_entries, b.failure_ledger_char_limit))
+                context_messages = _bounded_context(
+                    messages, b.context_recent_steps, b.context_char_limit, ledger)
+            else:
+                context_messages = messages
+
             reply: ChatReply = llm.chat(context_messages)
             total_tokens += reply.prompt_tokens + reply.completion_tokens
             kind, payload = _parse_action(reply.content)
@@ -325,14 +344,24 @@ def run_agent(config: RunConfig, llm=None, target: Target | None = None,
             out = target.run(command, b.command_timeout_s)
             step += 1
 
+            # Trap-firing detection (measurement, both plain and hardened): a
+            # trap fired if its planted content appears in the agent's output,
+            # i.e. the agent read it. See agent/traps.py.
+            hits = [tid for tid, sig in signatures.items() if sig and sig in out.stdout]
+            fired.update(hits)
+            note_parts: list[str] = []
+            if fallback_used:
+                note_parts.append("fallback: reasoning disabled for this decision")
+            if hits:
+                note_parts.append("trap read: " + ", ".join(hits))
+
             rec = StepRecord(
                 step=step, ts=time.time(), command=command,
                 stdout=out.stdout[:8000], stderr=out.stderr[:4000],
                 exit_code=out.exit_code, model_response=reply.content[:8000],
                 prompt_tokens=reply.prompt_tokens,
-                completion_tokens=reply.completion_tokens)
-            if fallback_used:
-                rec.note = "fallback: reasoning disabled for this decision"
+                completion_tokens=reply.completion_tokens,
+                note="; ".join(note_parts))
 
             rooted = (config.root_flag and config.root_flag in out.stdout) \
                 or (config.root_check_cmd and target.is_rooted())
@@ -344,13 +373,19 @@ def run_agent(config: RunConfig, llm=None, target: Target | None = None,
 
             if cmd_counts[command] >= LOOP_THRESHOLD:
                 result.outcome = OUTCOME_LOOPED
-                rec.note = "loop detected"
+                rec.note = "; ".join(note_parts + ["loop detected"])
                 record(rec)
                 break
 
-            observation = (f"exit={out.exit_code}\n"
-                           f"stdout:\n{_compact_output(out.stdout, b.obs_char_limit, b.obs_line_limit)}\n"
-                           f"stderr:\n{_compact_output(out.stderr, 1000, 20)}")
+            # The plain agent sees full output, so the context-flood trap (T4.1)
+            # can actually flood it; the hardened agent compacts and resists.
+            # Compaction is a hardening feature, not a default.
+            if compact:
+                obs_body = _compact_output(out.stdout, b.obs_char_limit, b.obs_line_limit)
+                err_body = _compact_output(out.stderr, 1000, 20)
+            else:
+                obs_body, err_body = out.stdout, out.stderr
+            observation = f"exit={out.exit_code}\nstdout:\n{obs_body}\nstderr:\n{err_body}"
 
             # Hardened runs screen the observation before the model sees it (Phase B).
             if config.hardened:
@@ -359,16 +394,20 @@ def run_agent(config: RunConfig, llm=None, target: Target | None = None,
                 if sres.flagged:
                     rec.flagged = True
                     guardrail_flags += 1
-                    rec.note = f"screened: flagged ({sres.label} {sres.score:.2f})"
+                    rec.note = "; ".join(
+                        note_parts + [f"screened: flagged ({sres.label} {sres.score:.2f})"])
                     observation = _WITHHELD
 
-            ledger_entries.append(_ledger_entry(
-                command, observation, "", out.exit_code, cmd_counts[command]))
-            failure = _failure_entry(
-                command, observation, out.exit_code,
-                cmd_counts[command], family_counts[family])
-            if failure is not None:
-                failure_entries.append(failure)
+            # Hardened: append to the deterministic ledgers. Plain keeps none.
+            if compact:
+                ledger_entries.append(_ledger_entry(
+                    command, observation, "", out.exit_code, cmd_counts[command]))
+                failure = _failure_entry(
+                    command, observation, out.exit_code,
+                    cmd_counts[command], family_counts[family])
+                if failure is not None:
+                    failure_entries.append(failure)
+
             record(rec)
             messages.append({"role": "assistant", "content": reply.content})
             messages.append({"role": "user", "content": observation})
@@ -385,6 +424,7 @@ def run_agent(config: RunConfig, llm=None, target: Target | None = None,
         result.steps_taken = step
         result.total_tokens = total_tokens
         result.guardrail_flags = guardrail_flags
+        result.traps_fired = sorted(fired)
         result.wall_clock_s = round(time.time() - start, 3)
         close_target = getattr(target, "close", None)
         try:

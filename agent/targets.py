@@ -7,6 +7,11 @@ and any privilege the agent gains (for example after a sudo escalation) carry
 across commands. MockTarget is an in-process fake for tests.
 
 No network egress is needed: the agent drives the shell over docker's stdio.
+
+Portability note: the shell is driven in binary mode (bufsize=0, bytes in and
+out) and decoded with errors="replace". That sidesteps both Windows pipe bugs
+at the source: no text-mode CRLF translation corrupts the commands we send, and
+the container's UTF-8 output never trips cp1252 decoding.
 """
 from __future__ import annotations
 
@@ -80,6 +85,8 @@ class DockerExecTarget:
         self._q = queue.Queue()
         self._start_error = ""
         try:
+            # Binary mode: we write bytes with a clean "\n" and decode output
+            # ourselves, so no OS-specific newline translation or codec applies.
             self._proc = subprocess.Popen(
                 self.exec_argv, stdin=subprocess.PIPE, stdout=subprocess.PIPE,
                 stderr=subprocess.STDOUT, bufsize=0)
@@ -105,6 +112,7 @@ class DockerExecTarget:
         sentinel = f"__ATDONE_{uuid.uuid4().hex[:8]}__"
         command_to_run = _make_noninteractive(command)
         try:
+            # rstrip any CR/LF the command carried in, then send a clean LF.
             command_bytes = (command_to_run.rstrip("\r\n") + "\n").encode("utf-8")
             sentinel_bytes = (
                 f"printf '%s%d\\n' {sentinel} $?\n".encode("ascii"))
@@ -140,7 +148,9 @@ class DockerExecTarget:
         if not self.root_check_cmd:
             return False
         out = self.run(self.root_check_cmd, 10)
-        return self.root_check_expect in out.stdout
+        # Match a whole output line, not a loose substring: expect "0" must not
+        # be satisfied by "uid=1000" or stray output (the false-positive-root bug).
+        return self.root_check_expect in [ln.strip() for ln in out.stdout.splitlines()]
 
     def _close(self) -> None:
         proc = self._proc
@@ -176,6 +186,9 @@ class DockerExecTarget:
 
 _INTERACTIVE_COMMAND_RE = re.compile(
     r"(?<![\w/-])(?:su|sudo|passwd|ssh|scp|sftp)(?![\w-])")
+# Signals that the command already supplies its own stdin: a pipe, an input
+# redirect / here-doc / here-string, or sudo's -S (read password from stdin).
+_HAS_OWN_STDIN_RE = re.compile(r"[|<]|(?<![\w-])-S(?![\w-])")
 
 
 def _make_noninteractive(command: str) -> str:
@@ -184,7 +197,14 @@ def _make_noninteractive(command: str) -> str:
     This does not deny the command or decide whether it is useful. It only
     gives stdin EOF, so a mistaken interactive attempt fails quickly and its
     real output is returned to the model for adaptation.
+
+    It must NOT touch a command that already feeds its own stdin, for example
+    `echo pw | sudo -S cat /root/flag.txt` or `sudo -S cmd <<< pw`; appending
+    `</dev/null` there would cut off the password and break a legitimate
+    escalation, so such commands are left exactly as written.
     """
+    if _HAS_OWN_STDIN_RE.search(command):
+        return command
     if _INTERACTIVE_COMMAND_RE.search(command):
         return f"{command.rstrip()} </dev/null"
     return command

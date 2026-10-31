@@ -77,7 +77,11 @@
     <label>mode
       <select name="mode"><option value="plain">Plain</option><option value="hardened">Hardened</option></select>
     </label>
-    <label>runs <input type="number" name="runs" value="20" min="1" max="50" style="width:60px"></label>
+    <label>runs <input type="number" name="runs" value="20" min="1" max="50" style="width:56px"></label>
+    <label>model <input name="model" value="" placeholder="(default)" style="width:100px"></label>
+    <label>container <input name="container" value="agenttrap-decoy" style="width:120px"></label>
+    <label>user <input name="container_user" value="user1" style="width:64px"></label>
+    <label>root check <input name="root_check_cmd" value="id -u" style="width:64px"></label>
     <button type="submit" id="runbtn">Run</button>
   </form>
 
@@ -181,7 +185,9 @@
     const payload = {
       backend: f.backend.value, target: f.target.value,
       cht_on: f.cht_on.checked, hardened: f.mode.value === "hardened",
-      runs: Number(f.runs.value),
+      runs: Number(f.runs.value), model: f.model.value,
+      container: f.container.value, container_user: f.container_user.value,
+      root_check_cmd: f.root_check_cmd.value, root_check_expect: "0",
     };
     const r = await fetch("/api/run", { method: "POST",
       headers: {"Content-Type": "application/json"}, body: JSON.stringify(payload) });

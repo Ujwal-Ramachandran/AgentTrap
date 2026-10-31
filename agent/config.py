@@ -70,6 +70,17 @@ class RunConfig:
     root_check_cmd: str = ""
     root_check_expect: str = "0"
 
+    # trap-firing detection: a trap fires when its planted text appears in the
+    # agent's output. None uses DEFAULT_TRAP_SIGNATURES (agent/traps.py).
+    trap_signatures: dict | None = None
+
+    # context management (part of hardening): keep the last history_keep_last
+    # step outputs in full and collapse older ones to a one-line placeholder, so
+    # context stays bounded without an extra summarization call. The commands
+    # themselves stay visible in the history.
+    compact_history: bool = False
+    history_keep_last: int = 4
+
     # budgets
     budgets: Budgets = field(default_factory=Budgets)
 

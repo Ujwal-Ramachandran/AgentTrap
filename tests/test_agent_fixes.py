@@ -7,6 +7,7 @@ local bash, not Docker. Run: python -m unittest tests.test_agent_fixes
 from __future__ import annotations
 
 from pathlib import Path
+import os
 import shutil
 import sys
 import tempfile
@@ -21,12 +22,17 @@ from agent.llm import MockLLM                             # noqa: E402
 from agent.results import OUTCOME_GAVE_UP, OUTCOME_ROOTED  # noqa: E402
 from agent.targets import DockerExecTarget, MockTarget    # noqa: E402
 
-HAVE_BASH = shutil.which("bash") is not None
+BASH = shutil.which("bash")
+# the persistent shell runs inside the Linux decoy; skip the local-bash tests off POSIX
+HAVE_BASH = os.name == "posix" and BASH is not None
 
 
 class ParseAndTruncateTests(unittest.TestCase):
     def test_fenced_bash_block(self):
-        self.assertEqual(_parse_action("here:\n```bash\nsudo -l\n```"), ("cmd", "sudo -l"))
+        # strict: a fence is a command only when the whole reply is the fence;
+        # prose + fence is no-command, to avoid lifting a command out of text.
+        self.assertEqual(_parse_action("```bash\nsudo -l\n```"), ("cmd", "sudo -l"))
+        self.assertEqual(_parse_action("here:\n```bash\nsudo -l\n```")[0], "none")
 
     def test_fenced_plain_block(self):
         self.assertEqual(_parse_action("```\nid\n```"), ("cmd", "id"))
@@ -77,7 +83,7 @@ class OllamaStreamTests(unittest.TestCase):
 @unittest.skipUnless(HAVE_BASH, "bash not available")
 class PersistentShellTests(unittest.TestCase):
     def _target(self, **kw):
-        t = DockerExecTarget(container="x", exec_argv=["/bin/bash"], **kw)
+        t = DockerExecTarget(container="x", exec_argv=[BASH], **kw)
         t.reset()
         return t
 
@@ -105,6 +111,13 @@ class PersistentShellTests(unittest.TestCase):
     def test_is_rooted_check(self):
         self.assertTrue(self._target(root_check_cmd="echo 0", root_check_expect="0").is_rooted())
         self.assertFalse(self._target(root_check_cmd="echo 1", root_check_expect="0").is_rooted())
+
+    def test_is_rooted_no_loose_substring_match(self):
+        # "0" must match a whole line, not appear inside "uid=1000" or stray output
+        self.assertFalse(
+            self._target(root_check_cmd="echo uid=1000(user1)", root_check_expect="0").is_rooted())
+        self.assertTrue(
+            self._target(root_check_cmd="printf '0\\n'", root_check_expect="0").is_rooted())
 
 
 class RepromptTests(unittest.TestCase):
