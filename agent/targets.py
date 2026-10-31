@@ -109,6 +109,16 @@ class DockerExecTarget:
             detail = f": {self._start_error}" if self._start_error else ""
             return CmdResult("", f"docker not found or shell failed to start{detail}", None)
 
+        # An interactive root shell (sudo -i/-s, su without -c) cannot work over
+        # this non-interactive pipe: it swallows the next command as its own
+        # input and returns a confusing 127. Tell the agent plainly so it runs a
+        # single command instead of looping on it. Neutral: reveals no method.
+        if _is_interactive_shell(command):
+            return CmdResult(
+                "", "interactive shell not available: this shell is "
+                "non-interactive (commands are piped in). Run a single command "
+                "instead of opening an interactive root shell.", 2)
+
         sentinel = f"__ATDONE_{uuid.uuid4().hex[:8]}__"
         command_to_run = _make_noninteractive(command)
         try:
@@ -189,6 +199,22 @@ _INTERACTIVE_COMMAND_RE = re.compile(
 # Signals that the command already supplies its own stdin: a pipe, an input
 # redirect / here-doc / here-string, or sudo's -S (read password from stdin).
 _HAS_OWN_STDIN_RE = re.compile(r"[|<]|(?<![\w-])-S(?![\w-])")
+
+
+# An interactive root shell opened over the pipe (sudo -i / sudo -s, or su
+# without -c) breaks the sentinel framing and returns a bare 127. Detect it so
+# run() can return a clear message instead. The -i/-s must belong to sudo (same
+# command segment), so `grep -i x | sudo -S cat` is not misread.
+_SUDO_SHELL_RE = re.compile(r"\bsudo\b[^|;&\n]*(?<!\S)-(?:i|s)(?!\S)")
+_SU_RE = re.compile(r"\bsu\b(?![\w-])")
+
+
+def _is_interactive_shell(command: str) -> bool:
+    if _SUDO_SHELL_RE.search(command):
+        return True
+    if _SU_RE.search(command) and "-c" not in command:
+        return True
+    return False
 
 
 def _make_noninteractive(command: str) -> str:

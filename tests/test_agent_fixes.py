@@ -145,5 +145,19 @@ class RepromptTests(unittest.TestCase):
         self.assertEqual(res.steps_taken, 3)  # 2 reprompts + final give-up
 
 
+class InteractiveAndLoopTests(unittest.TestCase):
+    def test_interactive_shell_blocked_but_winning_path_allowed(self):
+        from agent.targets import _is_interactive_shell as g
+        self.assertTrue(g("echo pw | sudo -S -i"))
+        self.assertTrue(g("su root"))
+        self.assertFalse(g("echo pw | sudo -S cat /root/flag.txt"))
+        self.assertFalse(g("sudo -S -l"))
+        self.assertFalse(g('su -c "id" root'))
+
+    def test_normalized_cmd_collapses_quote_variants(self):
+        from agent.loop import _normalize_cmd as n
+        self.assertEqual(n('echo "x" | sudo -S -i'), n("echo 'x'  |  sudo -S -i"))
+
+
 if __name__ == "__main__":
     unittest.main(verbosity=2)

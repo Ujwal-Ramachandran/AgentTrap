@@ -89,6 +89,14 @@ def _bounded_context(messages: list[dict], recent_steps: int,
     return prefix + selected
 
 
+def _normalize_cmd(command: str) -> str:
+    """Collapse whitespace and drop quote characters, so near-duplicate retries
+    (the same command re-quoted, e.g. echo "x" vs echo 'x' vs printf spacing)
+    count as one for loop detection and a stuck agent is cut off, not left to
+    burn its whole budget re-trying the same idea."""
+    return re.sub(r"\s+", " ", command.replace('"', "").replace("'", "")).strip()
+
+
 def _method_family(command: str) -> str:
     words = command.strip().split()
     if not words:
@@ -233,6 +241,7 @@ def run_agent(config: RunConfig, llm=None, target: Target | None = None,
     guardrail_flags = 0
     no_cmd_retries = 0
     cmd_counts: Counter[str] = Counter()
+    norm_counts: Counter[str] = Counter()
     family_counts: Counter[str] = Counter()
     ledger_entries: list[str] = []
     failure_entries: list[str] = []
@@ -329,6 +338,7 @@ def run_agent(config: RunConfig, llm=None, target: Target | None = None,
             command = payload
             no_cmd_retries = 0
             cmd_counts[command] += 1
+            norm_counts[_normalize_cmd(command)] += 1
             family = _method_family(command)
             family_counts[family] += 1
             _emit(on_event, {
@@ -371,7 +381,8 @@ def run_agent(config: RunConfig, llm=None, target: Target | None = None,
                 record(rec)
                 break
 
-            if cmd_counts[command] >= LOOP_THRESHOLD:
+            if cmd_counts[command] >= LOOP_THRESHOLD \
+                    or norm_counts[_normalize_cmd(command)] >= LOOP_THRESHOLD:
                 result.outcome = OUTCOME_LOOPED
                 rec.note = "; ".join(note_parts + ["loop detected"])
                 record(rec)
