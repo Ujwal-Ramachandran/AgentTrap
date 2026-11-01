@@ -189,7 +189,7 @@ class DockerExecTarget:
 
 
 _INTERACTIVE_COMMAND_RE = re.compile(
-    r"(?<![\w/-])(?:su|sudo|passwd|ssh|scp|sftp)(?![\w-])")
+    r"(?<![\w/-])(?:su|sudo|passwd|ssh|scp|sftp|chsh|chfn|newgrp|gpasswd)(?![\w-])")
 # A command that supplies its own stdin (a pipe, an input redirect, or sudo -S
 # reading the password from stdin) must NOT get </dev/null appended, that
 # would cut the input and break e.g. `echo pw | sudo -S cat /root/flag.txt`.
