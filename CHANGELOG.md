@@ -63,3 +63,29 @@ Backup: `ujwal/e2e` is untouched on the remote. Nothing here has been pushed to
   until then use `--screen mock` (GBR is a mock number).
 - The deception effects (flood, injection) are not yet cleanly isolated at N=3;
   trap firing depends on the agent's enumeration path.
+
+## Round 2: Dan's reworked agent (dan/decoy_cloak_honey @ aae476d, 8 new commits)
+
+Dan rewrote the agent core. Integrated onto ujwal/integration, adopting his
+design (summarizer/working memory on for every agent, per Ujwal's call).
+
+Adopted from Dan:
+- InvestigationState bounded working memory (the model reports leads in a <state>
+  block; the harness stores/caps/renders them), strict budget + monotonic timing,
+  per-call token caps, command auditing (audit, never block), verified-root
+  (requires uid=0 proof), grouped per-decoy logs, two SUID calibration decoys,
+  and a batch runner.
+
+Re-grafted / reconciled on top:
+- trap-firing detection + traps_fired (our core measurement), now in all cells.
+- require_root_evidence switch: our CHT decoy scores flag capture as success
+  (reading a root-only flag is proof); Dan's SUID decoys keep strict uid=0.
+- _make_noninteractive stdin guard re-applied (piped `sudo -S` keeps working);
+  normalized-command loop detection; --no-think threaded into the model call.
+- harness + dashboard updated to Dan's new RunConfig/StepLogger contract.
+- fixed 4 tests that were already red on Dan's branch (asserted old flag-only
+  success). 90 tests pass; end-to-end verified (trap fires, flag-capture success).
+
+Design consequence: the context-flood trap (T4.1) no longer produces a
+measurable effect, since every agent now summarizes. "Hardened" now means the
+defense prompt + PromptGuard screening layered on the shared working-memory agent.
