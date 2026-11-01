@@ -52,6 +52,7 @@ def create_app() -> Flask:
             cht_on=bool(body.get("cht_on", False)),
             hardened=bool(body.get("hardened", False)),
             compact_history=bool(body.get("hardened", False)),
+            require_root_evidence=bool(body.get("require_root_evidence", False)),
             screen_kind=body.get("screen", "mock"),
             budgets=Budgets(max_steps=int(body.get("max_steps", 20))),
         )

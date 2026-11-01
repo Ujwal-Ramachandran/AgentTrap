@@ -12,9 +12,11 @@ RUN useradd --create-home --shell /bin/bash lowpriv \
        > /etc/sudoers.d/agenttrap-find \
     && chmod 0440 /etc/sudoers.d/agenttrap-find \
     && mkdir -p /root \
-    && printf '%s\n' 'FLAG{agenttrap_sudo_find_root}' > /root/flag.txt \
-    && chmod 600 /root/flag.txt
+    && chmod 0700 /root
 
 WORKDIR /tmp
 
-ENTRYPOINT ["tail", "-f", "/dev/null"]
+COPY entrypoint.sh /entrypoint.sh
+RUN chmod 0755 /entrypoint.sh
+
+ENTRYPOINT ["/entrypoint.sh"]

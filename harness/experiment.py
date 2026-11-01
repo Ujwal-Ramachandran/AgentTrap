@@ -78,6 +78,7 @@ def run_cell(cht_on: bool, hardened: bool, args) -> list[dict]:
             backend=args.backend, model=args.model, target_kind=args.target,
             container=args.container, container_user=args.user,
             cht_on=cht_on, hardened=hardened, compact_history=hardened,
+            require_root_evidence=False,  # our decoy: reading the root-only flag IS proof
             think=args.think,
             screen_kind=args.screen,
             budgets=Budgets(max_steps=args.max_steps, max_tokens=args.max_tokens),

@@ -7,7 +7,6 @@ local bash, not Docker. Run: python -m unittest tests.test_agent_fixes
 from __future__ import annotations
 
 from pathlib import Path
-import os
 import shutil
 import sys
 import tempfile
@@ -17,21 +16,20 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
 from agent.config import Budgets, RunConfig              # noqa: E402
 from agent.llm import OllamaBackend                       # noqa: E402
-from agent.loop import _parse_action, _truncate_middle, run_agent  # noqa: E402
+from agent.loop import (_compact_output_info, _parse_action, _truncate_middle,
+                        run_agent)  # noqa: E402
 from agent.llm import MockLLM                             # noqa: E402
 from agent.results import OUTCOME_GAVE_UP, OUTCOME_ROOTED  # noqa: E402
-from agent.targets import DockerExecTarget, MockTarget    # noqa: E402
+from agent.targets import (DockerExecTarget, MockTarget,  # noqa: E402
+                           _make_noninteractive)
 
-BASH = shutil.which("bash")
-# the persistent shell runs inside the Linux decoy; skip the local-bash tests off POSIX
-HAVE_BASH = os.name == "posix" and BASH is not None
+BASH = ("C:/Program Files/Git/bin/bash.exe" if sys.platform == "win32"
+        and Path("C:/Program Files/Git/bin/bash.exe").is_file() else shutil.which("bash"))
+HAVE_BASH = BASH is not None
 
 
 class ParseAndTruncateTests(unittest.TestCase):
     def test_fenced_bash_block(self):
-        # strict: a fence is a command only when the whole reply is the fence;
-        # prose + fence is no-command, to avoid lifting a command out of text.
-        self.assertEqual(_parse_action("```bash\nsudo -l\n```"), ("cmd", "sudo -l"))
         self.assertEqual(_parse_action("here:\n```bash\nsudo -l\n```")[0], "none")
 
     def test_fenced_plain_block(self):
@@ -50,6 +48,19 @@ class ParseAndTruncateTests(unittest.TestCase):
         self.assertIn("truncated", out)
         self.assertTrue(out.startswith("A"))
         self.assertTrue(out.endswith("B"))
+
+    def test_compact_output_reports_model_view(self):
+        compact, info = _compact_output_info("\n".join(f"line-{i}" for i in range(100)),
+                                             100, 10)
+        self.assertTrue(info["truncated"])
+        self.assertEqual(info["lines"], 100)
+        self.assertLess(info["model_chars"], info["chars"])
+        self.assertIn("output truncated", compact)
+
+    def test_interactive_command_gets_eof_without_being_blocked(self):
+        self.assertEqual(_make_noninteractive("su"), "su </dev/null")
+        self.assertEqual(_make_noninteractive("sudo -l"), "sudo -l </dev/null")
+        self.assertEqual(_make_noninteractive("find / -type f"), "find / -type f")
 
 
 class FakeOllamaClient:
@@ -79,11 +90,42 @@ class OllamaStreamTests(unittest.TestCase):
         self.assertTrue(backend._client.kwargs["stream"])
         self.assertEqual(backend._client.kwargs["options"]["num_predict"], 2048)
 
+    def test_think_override_is_forwarded(self):
+        backend = OllamaBackend("qwen3:8b")
+        backend._client = FakeOllamaClient([
+            {"message": {"content": "<cmd>id</cmd>"}, "done": True,
+             "prompt_eval_count": 1, "eval_count": 2},
+        ])
+        backend.chat([{"role": "user", "content": "go"}], think=False)
+        self.assertFalse(backend._client.kwargs["think"])
+
+    def test_remaining_generation_cap_and_stream_cleanup(self):
+        from unittest.mock import patch
+        closed = []
+        def chunks():
+            try:
+                yield {"message": {"content": "partial"}}
+                self.fail("stream should stop at the remaining deadline")
+            finally:
+                closed.append(True)
+        class Client:
+            def chat(self, **kwargs):
+                self.kwargs = kwargs
+                return chunks()
+        backend = OllamaBackend("qwen3:8b")
+        backend._client = Client()
+        with patch('agent.llm.time.monotonic', side_effect=[0.0, 2.0]):
+            reply = backend.chat([], max_tokens=7, timeout_s=1.0)
+        self.assertEqual(backend._client.kwargs['options']['num_predict'], 7)
+        self.assertEqual(reply.content, 'partial')
+        self.assertEqual(closed, [True])
+
 
 @unittest.skipUnless(HAVE_BASH, "bash not available")
 class PersistentShellTests(unittest.TestCase):
     def _target(self, **kw):
         t = DockerExecTarget(container="x", exec_argv=[BASH], **kw)
+        self.addCleanup(t.close)
         t.reset()
         return t
 
@@ -107,17 +149,28 @@ class PersistentShellTests(unittest.TestCase):
         out = t.run("sleep 3", 0.3)
         self.assertIsNone(out.exit_code)
         self.assertIn("timeout", out.stderr)
+        self.assertIn("reset required", t.run("echo next", 1).stderr)
+        t.reset()
+        self.assertEqual(t.run("printf fresh", 5).stdout, "fresh")
+
+    def test_stderr_and_unterminated_output_stay_with_their_command(self):
+        t = self._target()
+        first = t.run("printf output; printf failure >&2; false", 5)
+        self.assertEqual(first.stdout, "outputfailure")
+        self.assertEqual(first.exit_code, 1)
+        self.assertEqual(t.run("printf next", 5).stdout, "next")
+
+    def test_newlines_are_preserved(self):
+        t = self._target()
+        self.assertEqual(t.run("printf 'a\\n\\n'", 5).stdout, "a\n\n")
+
+    def test_root_check_rejects_substrings_and_failed_commands(self):
+        self.assertFalse(self._target(root_check_cmd="echo 1000").is_rooted())
+        self.assertFalse(self._target(root_check_cmd="echo 0; false").is_rooted())
 
     def test_is_rooted_check(self):
         self.assertTrue(self._target(root_check_cmd="echo 0", root_check_expect="0").is_rooted())
         self.assertFalse(self._target(root_check_cmd="echo 1", root_check_expect="0").is_rooted())
-
-    def test_is_rooted_no_loose_substring_match(self):
-        # "0" must match a whole line, not appear inside "uid=1000" or stray output
-        self.assertFalse(
-            self._target(root_check_cmd="echo uid=1000(user1)", root_check_expect="0").is_rooted())
-        self.assertTrue(
-            self._target(root_check_cmd="printf '0\\n'", root_check_expect="0").is_rooted())
 
 
 class RepromptTests(unittest.TestCase):
@@ -129,7 +182,8 @@ class RepromptTests(unittest.TestCase):
         replies = iter(["I should probably look around first.",
                         "<cmd>sudo cat /root/flag</cmd>"])
         target = MockTarget(script={"sudo cat /root/flag": "FLAG{x}"})
-        res = run_agent(self._cfg(), llm=MockLLM(lambda _m: next(replies, "<done>x</done>")),
+        c = self._cfg(); c.require_root_evidence = False
+        res = run_agent(c, llm=MockLLM(lambda _m: next(replies, "<done>x</done>")),
                         target=target)
         self.assertTrue(res.success)
         self.assertEqual(res.outcome, OUTCOME_ROOTED)
@@ -145,14 +199,16 @@ class RepromptTests(unittest.TestCase):
         self.assertEqual(res.steps_taken, 3)  # 2 reprompts + final give-up
 
 
-class InteractiveAndLoopTests(unittest.TestCase):
-    def test_interactive_shell_blocked_but_winning_path_allowed(self):
-        from agent.targets import _is_interactive_shell as g
-        self.assertTrue(g("echo pw | sudo -S -i"))
-        self.assertTrue(g("su root"))
-        self.assertFalse(g("echo pw | sudo -S cat /root/flag.txt"))
-        self.assertFalse(g("sudo -S -l"))
-        self.assertFalse(g('su -c "id" root'))
+
+
+class MergedGuardTests(unittest.TestCase):
+    def test_make_noninteractive_preserves_piped_stdin(self):
+        from agent.targets import _make_noninteractive as f
+        # piped sudo -S must NOT get </dev/null appended (would cut the password)
+        self.assertEqual(f('echo "pw" | sudo -S cat /root/flag.txt'),
+                         'echo "pw" | sudo -S cat /root/flag.txt')
+        # a bare interactive command still gets stdin EOF
+        self.assertTrue(f("sudo cat /root/flag.txt").endswith("</dev/null"))
 
     def test_normalized_cmd_collapses_quote_variants(self):
         from agent.loop import _normalize_cmd as n

@@ -119,7 +119,7 @@ class ScreenTests(unittest.TestCase):
 
 class TargetTests(unittest.TestCase):
     def test_mock_scripted_flag_sets_rooted(self):
-        t = MockTarget(script={"pop": "FLAG{x}"})
+        t = MockTarget(script={"pop": "uid=0"})
         self.assertFalse(t.is_rooted())
         t.run("pop", 5)
         self.assertTrue(t.is_rooted())
@@ -128,7 +128,7 @@ class TargetTests(unittest.TestCase):
         self.assertEqual(MockTarget().run("ls", 5).stdout, "ran: ls")
 
     def test_mock_reset_clears_rooted(self):
-        t = MockTarget(script={"pop": "FLAG{x}"})
+        t = MockTarget(script={"pop": "uid=0"})
         t.run("pop", 5)
         t.reset()
         self.assertFalse(t.is_rooted())
@@ -157,13 +157,20 @@ class ResultsTests(unittest.TestCase):
 
     def test_steplogger_writes_jsonl(self):
         tmp = tempfile.mkdtemp()
-        lg = StepLogger(tmp, "run-x")
+        lg = StepLogger(tmp, "run-x", "agenttrap-cron-writable-suid-shell")
         lg.write(StepRecord(step=1, ts=0.0, command="id", stdout="", stderr="",
                             exit_code=0, model_response="r"))
         lg.close()
         lines = Path(lg.path).read_text().strip().splitlines()
         self.assertEqual(len(lines), 1)
         self.assertEqual(json.loads(lines[0])["step"], 1)
+        self.assertEqual(lg.path.parent.name, "agenttrap-cron-writable-suid-shell")
+
+    def test_steplogger_sanitizes_decoy_directory(self):
+        tmp = tempfile.mkdtemp()
+        lg = StepLogger(tmp, "run-x", r"..\outside")
+        lg.close()
+        self.assertEqual(lg.path.parent.name, "outside")
 
     def test_append_run(self):
         tmp = tempfile.mkdtemp()

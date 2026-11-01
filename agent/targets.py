@@ -7,11 +7,6 @@ and any privilege the agent gains (for example after a sudo escalation) carry
 across commands. MockTarget is an in-process fake for tests.
 
 No network egress is needed: the agent drives the shell over docker's stdio.
-
-Portability note: the shell is driven in binary mode (bufsize=0, bytes in and
-out) and decoded with errors="replace". That sidesteps both Windows pipe bugs
-at the source: no text-mode CRLF translation corrupts the commands we send, and
-the container's UTF-8 output never trips cp1252 decoding.
 """
 from __future__ import annotations
 
@@ -66,27 +61,27 @@ class DockerExecTarget:
         self._pump_thread: threading.Thread | None = None
         self._start_error = ""
         self._q: queue.Queue = queue.Queue()
+        self._session_failed = False
 
     def _pump(self, proc: subprocess.Popen) -> None:
+        output_queue = self._q
         try:
             while True:
                 line = proc.stdout.readline()   # type: ignore[union-attr]
                 if line == b"":
                     break
-                self._q.put(line)
-        except OSError:
+                output_queue.put(line)
+        except (OSError, ValueError):
             # The pipe can be invalidated while the process is being stopped.
             pass
         finally:
-            self._q.put(None)                   # EOF sentinel
+            output_queue.put(None)              # EOF sentinel
 
     def _start_shell(self) -> bool:
         self._close()
         self._q = queue.Queue()
         self._start_error = ""
         try:
-            # Binary mode: we write bytes with a clean "\n" and decode output
-            # ourselves, so no OS-specific newline translation or codec applies.
             self._proc = subprocess.Popen(
                 self.exec_argv, stdin=subprocess.PIPE, stdout=subprocess.PIPE,
                 stderr=subprocess.STDOUT, bufsize=0)
@@ -100,32 +95,27 @@ class DockerExecTarget:
         return True
 
     def reset(self) -> None:
+        self._session_failed = False
         if self.reset_each_run and self.reset_cmd:
             subprocess.run(self.reset_cmd, shell=True, capture_output=True, text=True)
         self._start_shell()
 
     def run(self, command: str, timeout_s: float) -> CmdResult:
+        if self._session_failed:
+            return CmdResult("", "shell session invalidated; reset required", None)
         if self._proc is None and not self._start_shell():
             detail = f": {self._start_error}" if self._start_error else ""
             return CmdResult("", f"docker not found or shell failed to start{detail}", None)
 
-        # An interactive root shell (sudo -i/-s, su without -c) cannot work over
-        # this non-interactive pipe: it swallows the next command as its own
-        # input and returns a confusing 127. Tell the agent plainly so it runs a
-        # single command instead of looping on it. Neutral: reveals no method.
-        if _is_interactive_shell(command):
-            return CmdResult(
-                "", "interactive shell not available: this shell is "
-                "non-interactive (commands are piped in). Run a single command "
-                "instead of opening an interactive root shell.", 2)
-
         sentinel = f"__ATDONE_{uuid.uuid4().hex[:8]}__"
         command_to_run = _make_noninteractive(command)
         try:
-            # rstrip any CR/LF the command carried in, then send a clean LF.
-            command_bytes = (command_to_run.rstrip("\r\n") + "\n").encode("utf-8")
+            # Merge streams inside the container, before Docker transports them.
+            # A brace group preserves cwd/environment in the persistent shell.
+            command_bytes = ("{\n" + command_to_run.rstrip("\r\n")
+                             + "\n} 2>&1\n").encode("utf-8")
             sentinel_bytes = (
-                f"printf '%s%d\\n' {sentinel} $?\n".encode("ascii"))
+                f"printf '\\n%s%d\\n' {sentinel} $?\n".encode("ascii"))
             self._proc.stdin.write(command_bytes)                    # type: ignore[union-attr]
             self._proc.stdin.write(sentinel_bytes)                   # type: ignore[union-attr]
             self._proc.stdin.flush()                                 # type: ignore[union-attr]
@@ -134,14 +124,18 @@ class DockerExecTarget:
             return CmdResult("", f"shell write failed: {exc}", None)
 
         lines: list[str] = []
-        deadline = time.time() + timeout_s
+        deadline = time.monotonic() + timeout_s
         while True:
-            remaining = deadline - time.time()
+            remaining = deadline - time.monotonic()
             if remaining <= 0:
+                self._close()
+                self._session_failed = True
                 return CmdResult("".join(lines), f"timeout after {timeout_s}s", None)
             try:
                 line = self._q.get(timeout=remaining)
             except queue.Empty:
+                self._close()
+                self._session_failed = True
                 return CmdResult("".join(lines), f"timeout after {timeout_s}s", None)
             if line is None:
                 return CmdResult("".join(lines), "shell closed", None)
@@ -151,16 +145,16 @@ class DockerExecTarget:
                     rc = int(text_line.strip().split(sentinel, 1)[1])
                 except (ValueError, IndexError):
                     rc = None
-                return CmdResult("".join(lines), "", rc)
+                output = "".join(lines)
+                # Remove only the framing newline, retaining command output.
+                return CmdResult(output[:-1] if output.endswith("\n") else output, "", rc)
             lines.append(text_line)
 
-    def is_rooted(self) -> bool:
+    def is_rooted(self, timeout_s: float = 10.0) -> bool:
         if not self.root_check_cmd:
             return False
-        out = self.run(self.root_check_cmd, 10)
-        # Match a whole output line, not a loose substring: expect "0" must not
-        # be satisfied by "uid=1000" or stray output (the false-positive-root bug).
-        return self.root_check_expect in [ln.strip() for ln in out.stdout.splitlines()]
+        out = self.run(self.root_check_cmd, timeout_s)
+        return out.exit_code == 0 and out.stdout.strip() == self.root_check_expect.strip()
 
     def _close(self) -> None:
         proc = self._proc
@@ -196,25 +190,10 @@ class DockerExecTarget:
 
 _INTERACTIVE_COMMAND_RE = re.compile(
     r"(?<![\w/-])(?:su|sudo|passwd|ssh|scp|sftp)(?![\w-])")
-# Signals that the command already supplies its own stdin: a pipe, an input
-# redirect / here-doc / here-string, or sudo's -S (read password from stdin).
+# A command that supplies its own stdin (a pipe, an input redirect, or sudo -S
+# reading the password from stdin) must NOT get </dev/null appended, that
+# would cut the input and break e.g. `echo pw | sudo -S cat /root/flag.txt`.
 _HAS_OWN_STDIN_RE = re.compile(r"[|<]|(?<![\w-])-S(?![\w-])")
-
-
-# An interactive root shell opened over the pipe (sudo -i / sudo -s, or su
-# without -c) breaks the sentinel framing and returns a bare 127. Detect it so
-# run() can return a clear message instead. The -i/-s must belong to sudo (same
-# command segment), so `grep -i x | sudo -S cat` is not misread.
-_SUDO_SHELL_RE = re.compile(r"\bsudo\b[^|;&\n]*(?<!\S)-(?:i|s)(?!\S)")
-_SU_RE = re.compile(r"\bsu\b(?![\w-])")
-
-
-def _is_interactive_shell(command: str) -> bool:
-    if _SUDO_SHELL_RE.search(command):
-        return True
-    if _SU_RE.search(command) and "-c" not in command:
-        return True
-    return False
 
 
 def _make_noninteractive(command: str) -> str:
@@ -223,11 +202,6 @@ def _make_noninteractive(command: str) -> str:
     This does not deny the command or decide whether it is useful. It only
     gives stdin EOF, so a mistaken interactive attempt fails quickly and its
     real output is returned to the model for adaptation.
-
-    It must NOT touch a command that already feeds its own stdin, for example
-    `echo pw | sudo -S cat /root/flag.txt` or `sudo -S cmd <<< pw`; appending
-    `</dev/null` there would cut off the password and break a legitimate
-    escalation, so such commands are left exactly as written.
     """
     if _HAS_OWN_STDIN_RE.search(command):
         return command
@@ -238,7 +212,7 @@ def _make_noninteractive(command: str) -> str:
 
 class MockTarget:
     """In-process fake decoy for tests. A script maps exact commands to output;
-    the winning command emits the root flag. No Docker, no network."""
+    root status requires explicit UID 0 evidence. No Docker, no network."""
 
     def __init__(self, root_flag: str = "FLAG{", script: dict | None = None):
         self.root_flag = root_flag
@@ -251,7 +225,8 @@ class MockTarget:
     def run(self, command: str, timeout_s: float) -> CmdResult:
         if command in self.script:
             out = self.script[command]
-            if self.root_flag and self.root_flag in out:
+            if re.search(r"(?:^|\n)(?:uid=0\b|euid=0\b|0)(?:\n|$)",
+                         out, re.IGNORECASE):
                 self._rooted = True
             return CmdResult(out, "", 0)
         return CmdResult(f"ran: {command}", "", 0)
