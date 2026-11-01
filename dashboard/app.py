@@ -56,7 +56,9 @@ def create_app() -> Flask:
             screen_kind=body.get("screen", "mock"),
             budgets=Budgets(max_steps=int(body.get("max_steps", 20))),
         )
-        batch_id = manager.start_batch(cfg, runs)
+        batch_id = manager.start_batch(
+            cfg, runs, image=body.get("image", "agenttrap-decoy"),
+            seed_script=body.get("seed_script", "seed_traps.sh"))
         return jsonify({"batch_id": batch_id, "total": runs,
                         "model": cfg.model or backend, "cht_on": cfg.cht_on,
                         "hardened": cfg.hardened})

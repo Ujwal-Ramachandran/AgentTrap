@@ -23,6 +23,7 @@ import threading
 
 from agent.config import RunConfig
 from agent.loop import run_agent
+from harness.experiment import reset_container, seed_decoy
 
 
 def _outcome_label(outcome: str, success: bool) -> str:
@@ -92,7 +93,9 @@ class RunManager:
         with self._lock:
             return self._aggregate.get(batch_id)
 
-    def start_batch(self, base: RunConfig, runs: int) -> str:
+    def start_batch(self, base: RunConfig, runs: int,
+                    image: str = "agenttrap-decoy",
+                    seed_script: str = "seed_traps.sh") -> str:
         batch_id = base.run_id
 
         def worker() -> None:
@@ -100,6 +103,11 @@ class RunManager:
             for i in range(1, runs + 1):
                 cfg = copy.deepcopy(base)
                 cfg.run_id = f"{batch_id}-{i:02d}"
+                # Fresh, correctly-seeded decoy per run, same as the CLI harness.
+                if cfg.target_kind == "docker":
+                    reset_container(image, cfg.container)
+                    if cfg.cht_on:
+                        seed_decoy(cfg.container, cfg.container_user, seed_script)
                 self._publish(batch_id, {
                     "type": "run_index", "i": i, "n": runs, "run_id": cfg.run_id,
                     "model": cfg.model, "cht_on": cfg.cht_on, "hardened": cfg.hardened})
