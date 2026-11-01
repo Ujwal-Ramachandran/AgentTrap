@@ -54,7 +54,7 @@ def create_app() -> Flask:
             compact_history=bool(body.get("hardened", False)),
             require_root_evidence=bool(body.get("require_root_evidence", False)),
             screen_kind=body.get("screen", "mock"),
-            budgets=Budgets(max_steps=int(body.get("max_steps", 20))),
+            budgets=Budgets(max_steps=int(body.get("max_steps", 40))),
         )
         batch_id = manager.start_batch(
             cfg, runs, image=body.get("image", "agenttrap-decoy"),
