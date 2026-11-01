@@ -13,7 +13,7 @@
   * { box-sizing: border-box; }
   body { margin: 0; background: var(--bg); color: var(--text);
          font-family: system-ui, -apple-system, Segoe UI, Roboto, sans-serif; font-size: 14px; }
-  .wrap { max-width: 1400px; margin: 0 auto; padding: 16px; height: 100vh;
+  .wrap { max-width: 1400px; margin: 0 auto; padding: 16px; min-height: 100vh;
           display: grid; grid-template-columns: 440px minmax(0, 1fr);
           grid-template-rows: minmax(0, 1fr) auto; gap: 16px 20px; }
   .left, .right { min-height: 0; }
@@ -71,6 +71,37 @@
 
   .footer { grid-column: 1 / -1; display: grid; gap: 4px; }
   .footer .row .v.outcome { color: var(--text); }
+
+  /* attack timeline (per-run history) */
+  .timeline { grid-column: 1 / -1; border: 1px solid var(--line); border-radius: 8px;
+    background: var(--panel); }
+  .timeline > h2 { font-size: 12px; text-transform: uppercase; letter-spacing: .6px;
+    color: var(--muted); margin: 0; padding: 8px 12px; border-bottom: 1px solid var(--line); }
+  #history { max-height: 340px; overflow-y: auto; padding: 8px 10px; display: flex;
+    flex-direction: column; gap: 8px; }
+  #history:empty::after { content: "Run something to see each attack's timeline here.";
+    color: var(--muted); font-size: 12px; }
+  .runcard { border: 1px solid var(--line); border-left-width: 3px; border-radius: 6px;
+    background: var(--bg); }
+  .runcard.rooted { border-left-color: var(--bad); }
+  .runcard.failed, .runcard.timeout { border-left-color: var(--ok); }
+  .runhead { display: flex; align-items: center; gap: 12px; padding: 8px 12px; cursor: pointer;
+    font-size: 13px; flex-wrap: wrap; }
+  .runhead .runno { font-weight: 700; font-family: var(--mono); }
+  .badge { font-family: var(--mono); font-size: 11px; font-weight: 700; padding: 2px 8px;
+    border-radius: 10px; }
+  .badge.ok { background: rgba(248,81,73,.15); color: var(--bad); }
+  .badge.def { background: rgba(63,185,80,.15); color: var(--ok); }
+  .runhead .runmeta { color: var(--muted); font-family: var(--mono); font-size: 12px; }
+  .runhead .runtraps { color: var(--warn); font-size: 12px; margin-left: auto; }
+  .runtimeline { padding: 4px 12px 10px; font-family: var(--mono); font-size: 12px;
+    line-height: 1.6; border-top: 1px solid var(--line); }
+  .runtimeline.collapsed { display: none; }
+  .tl { color: var(--text); opacity: .9; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .tl .n { color: var(--muted); }
+  .tl.trap { color: var(--warn); }
+  .tl.root { color: var(--bad); font-weight: 700; }
+  .tl.fail { opacity: .55; }
 </style>
 </head>
 <body>
@@ -135,6 +166,11 @@
     <div class="row"><span class="k">Defense Encountered</span><span class="v" id="m-defense">-</span></div>
   </div>
 
+  <div class="timeline">
+    <h2>Attack Timeline (per run)</h2>
+    <div id="history"></div>
+  </div>
+
 </div>
 <script>
   const $ = (id) => document.getElementById(id);
@@ -173,6 +209,45 @@
     consoleEl.scrollTop = consoleEl.scrollHeight;
   }
 
+  const histEl = $("history");
+  let curRun = null;
+  const escHtml = (x) => x.replace(/[&<>"']/g, c => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]));
+  const shortCmd = (c) => { c = (c || "(no command)").replace(/\s+/g, " ").trim();
+    return c.length > 90 ? c.slice(0, 90) + "\u2026" : c; };
+
+  function finalizeRun(end) {
+    if (!curRun) return;
+    const success = end.success;
+    const outcome = end.outcome || "";
+    const traps = end.traps_fired || [];
+    const card = document.createElement("div");
+    card.className = "runcard " + (success ? "rooted" : (outcome === "budget_exhausted" ? "timeout" : "failed"));
+    const badge = success ? '<span class="badge ok">ROOTED</span>'
+      : '<span class="badge def">' + (outcome === "budget_exhausted" ? "TIMEOUT" : "DEFENDED") + '</span>';
+    const traptxt = traps.length ? '<span class="runtraps">traps: ' + escHtml(traps.join(", ")) + '</span>' : '';
+    const head = document.createElement("div");
+    head.className = "runhead";
+    head.innerHTML = '<span class="runno">Run ' + curRun.i + '</span>' + badge
+      + '<span class="runmeta">' + (end.steps_taken || curRun.steps.length) + ' steps \u00b7 '
+      + Math.round(end.wall_clock_s || 0) + 's</span>' + traptxt;
+    const tl = document.createElement("div");
+    tl.className = "runtimeline";
+    curRun.steps.forEach((st, idx) => {
+      const line = document.createElement("div");
+      let cls = "tl", tag = "";
+      if (st.traps && st.traps.length) { cls += " trap"; tag = " \ud83e\udea4 " + st.traps.join(", "); }
+      if (success && idx === curRun.steps.length - 1) { cls += " root"; tag = " \u2705 rooted"; }
+      else if (st.exit !== 0 && st.exit != null) { cls += " fail"; }
+      line.className = cls;
+      line.innerHTML = '<span class="n">' + st.step + ' \u00b7</span> $ ' + escHtml(shortCmd(st.cmd)) + escHtml(tag);
+      tl.appendChild(line);
+    });
+    head.addEventListener("click", () => tl.classList.toggle("collapsed"));
+    card.appendChild(head); card.appendChild(tl);
+    histEl.insertBefore(card, histEl.firstChild);
+    curRun = null;
+  }
+
   function onEvent(ev) {
     if (ev.type === "run_index") {
       $("m-run").textContent = `${ev.i}/${ev.n}`;
@@ -181,14 +256,22 @@
       $("m-mode").textContent = ev.hardened ? "Hardened" : "Plain";
       $("m-runstatus").textContent = "Running";
       consoleEl.innerHTML = "";
+      curRun = { i: ev.i, steps: [] };
       startRuntime();
     } else if (ev.type === "step") {
       addStep(ev);
+      if (curRun) {
+        const m = (ev.note || "").match(/trap read: ([^;]+)/);
+        curRun.steps.push({ step: ev.step, cmd: ev.command, exit: ev.exit_code,
+          traps: m ? m[1].split(",").map(x => x.trim()) : [] });
+      }
     } else if (ev.type === "aggregate") {
       setRate("m-tsr", ev.tsr); setRate("m-dsr", ev.dsr); setRate("m-gbr", ev.gbr);
       $("m-avg").textContent = fmt(ev.avg_runtime_s);
       $("m-outcome").textContent = ev.last_outcome;
       $("m-defense").textContent = ev.traps.length ? ev.traps.join(", ") : "-";
+    } else if (ev.type === "run_end") {
+      finalizeRun(ev);
     } else if (ev.type === "batch_end") {
       $("m-runstatus").textContent = "Completed";
       clearInterval(runtimeTimer);
@@ -200,6 +283,7 @@
   $("runform").addEventListener("submit", async (e) => {
     e.preventDefault();
     $("runbtn").disabled = true;
+    histEl.innerHTML = "";
     const f = e.target;
     const payload = {
       backend: f.backend.value, target: f.target.value,
