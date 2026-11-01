@@ -13,7 +13,9 @@
   * { box-sizing: border-box; }
   body { margin: 0; background: var(--bg); color: var(--text);
          font-family: system-ui, -apple-system, Segoe UI, Roboto, sans-serif; font-size: 14px; }
-  .wrap { max-width: 1400px; margin: 0 auto; padding: 16px; min-height: 100vh;
+
+  /* top dashboard fills one viewport; the console scrolls inside it */
+  .wrap { max-width: 1400px; margin: 0 auto; padding: 16px; height: 100vh;
           display: grid; grid-template-columns: 440px minmax(0, 1fr);
           grid-template-rows: minmax(0, 1fr) auto; gap: 16px 20px; }
   .left, .right { min-height: 0; }
@@ -59,7 +61,7 @@
              font-size: 12px; line-height: 1.5; }
   .step { margin-bottom: 8px; border-left: 2px solid var(--line); padding-left: 9px; }
   .step.flagged { border-left-color: var(--warn); }
-  .cmd { color: var(--accent); }
+  .cmd { color: var(--accent); white-space: pre-wrap; word-break: break-word; }
   .cmd::before { content: "$ "; color: var(--muted); }
   .out { color: var(--text); white-space: pre-wrap; word-break: break-word; opacity: .85; }
   .note { color: var(--warn); font-style: italic; }
@@ -72,36 +74,41 @@
   .footer { grid-column: 1 / -1; display: grid; gap: 4px; }
   .footer .row .v.outcome { color: var(--text); }
 
-  /* attack timeline (per-run history) */
-  .timeline { grid-column: 1 / -1; border: 1px solid var(--line); border-radius: 8px;
-    background: var(--panel); }
+  /* attack timeline: a normal section BELOW the viewport; scroll down to it */
+  .timeline { max-width: 1400px; margin: 0 auto 28px; padding: 0 16px; }
   .timeline > h2 { font-size: 12px; text-transform: uppercase; letter-spacing: .6px;
-    color: var(--muted); margin: 0; padding: 8px 12px; border-bottom: 1px solid var(--line); }
-  #history { max-height: 340px; overflow-y: auto; padding: 8px 10px; display: flex;
-    flex-direction: column; gap: 8px; }
-  #history:empty::after { content: "Run something to see each attack's timeline here.";
+    color: var(--muted); margin: 18px 2px 8px; }
+  #history { display: flex; flex-direction: column; gap: 8px; }
+  #history:empty::after { content: "Run a batch to see each attack's full timeline here.";
     color: var(--muted); font-size: 12px; }
   .runcard { border: 1px solid var(--line); border-left-width: 3px; border-radius: 6px;
-    background: var(--bg); }
+    background: var(--panel); }
   .runcard.rooted { border-left-color: var(--bad); }
-  .runcard.failed, .runcard.timeout { border-left-color: var(--ok); }
-  .runhead { display: flex; align-items: center; gap: 12px; padding: 8px 12px; cursor: pointer;
-    font-size: 13px; flex-wrap: wrap; }
+  .runcard.failed { border-left-color: var(--ok); }
+  .runcard.errored { border-left-color: var(--muted); }
+  .runhead { display: flex; align-items: center; gap: 12px; padding: 10px 12px; cursor: pointer;
+    font-size: 13px; flex-wrap: wrap; user-select: none; }
+  .runhead:hover { background: rgba(255,255,255,.02); }
+  .runhead .caret { color: var(--muted); font-family: var(--mono); width: 10px; }
   .runhead .runno { font-weight: 700; font-family: var(--mono); }
   .badge { font-family: var(--mono); font-size: 11px; font-weight: 700; padding: 2px 8px;
     border-radius: 10px; }
-  .badge.ok { background: rgba(248,81,73,.15); color: var(--bad); }
-  .badge.def { background: rgba(63,185,80,.15); color: var(--ok); }
+  .badge.ok  { background: rgba(248,81,73,.15);  color: var(--bad); }
+  .badge.def { background: rgba(63,185,80,.15);  color: var(--ok); }
+  .badge.warn{ background: rgba(210,153,34,.15); color: var(--warn); }
+  .badge.err { background: rgba(139,149,163,.18); color: var(--muted); }
   .runhead .runmeta { color: var(--muted); font-family: var(--mono); font-size: 12px; }
   .runhead .runtraps { color: var(--warn); font-size: 12px; margin-left: auto; }
-  .runtimeline { padding: 4px 12px 10px; font-family: var(--mono); font-size: 12px;
-    line-height: 1.6; border-top: 1px solid var(--line); }
-  .runtimeline.collapsed { display: none; }
-  .tl { color: var(--text); opacity: .9; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-  .tl .n { color: var(--muted); }
-  .tl.trap { color: var(--warn); }
-  .tl.root { color: var(--bad); font-weight: 700; }
-  .tl.fail { opacity: .55; }
+  .runbody { max-height: 320px; overflow-y: auto; padding: 10px 12px;
+    border-top: 1px solid var(--line); font-family: var(--mono); font-size: 12px; line-height: 1.5; }
+  .runbody.collapsed { display: none; }
+  .rb-step { margin-bottom: 8px; border-left: 2px solid var(--line); padding-left: 9px; }
+  .rb-step.trap { border-left-color: var(--warn); }
+  .rb-step.root { border-left-color: var(--bad); }
+  .rb-cmd { color: var(--accent); white-space: pre-wrap; word-break: break-word; }
+  .rb-cmd::before { content: "$ "; color: var(--muted); }
+  .rb-out { color: var(--text); opacity: .82; white-space: pre-wrap; word-break: break-word; }
+  .rb-note { color: var(--warn); font-style: italic; }
 </style>
 </head>
 <body>
@@ -147,7 +154,7 @@
 
   <main>
     <div class="console-wrap">
-      <h2>Live Console</h2>
+      <h2>Live Console (current run)</h2>
       <div id="console"></div>
     </div>
     <div class="metrics">
@@ -159,29 +166,33 @@
         <div class="val" id="m-gbr">- <span class="frac"></span></div></div>
     </div>
   </main>
-  </div>
 
   <div class="footer">
     <div class="row"><span class="k">Current Run Outcome</span><span class="v outcome" id="m-outcome">-</span></div>
     <div class="row"><span class="k">Defense Encountered</span><span class="v" id="m-defense">-</span></div>
   </div>
-
-  <div class="timeline">
-    <h2>Attack Timeline (per run)</h2>
-    <div id="history"></div>
   </div>
 
 </div>
+
+<div class="timeline">
+  <h2>Attack Timeline (per run) &mdash; click a run to expand</h2>
+  <div id="history"></div>
+</div>
+
 <script>
   const $ = (id) => document.getElementById(id);
   const consoleEl = $("console");
-  let source = null, runtimeTimer = null, runStart = 0;
+  const histEl = $("history");
+  let source = null, runtimeTimer = null, runStart = 0, curRun = null;
 
   const fmt = (s) => { s = Math.round(s); const m = Math.floor(s / 60);
-    return m > 0 ? `${m}m ${s % 60}s` : `${s}s`; };
+    return m > 0 ? (m + "m " + (s % 60) + "s") : (s + "s"); };
   const setRate = (id, r) => {
-    $(id).innerHTML = `${r.pct.toFixed(1)} % <span class="frac">(${r.num}/${r.den})</span>`;
+    $(id).innerHTML = r.pct.toFixed(1) + " % <span class=\"frac\">(" + r.num + "/" + r.den + ")</span>";
   };
+  const escHtml = (x) => String(x).replace(/[&<>"']/g,
+    c => ({ "&":"&amp;", "<":"&lt;", ">":"&gt;", "\"":"&quot;", "'":"&#39;" }[c]));
 
   function startRuntime() {
     runStart = Date.now();
@@ -191,66 +202,83 @@
     }, 1000);
   }
 
-  function addStep(ev) {
+  // one rendered step (command + output + note); used by both the live console
+  // and the per-run timeline cards.
+  function renderStep(ev, cmdCls, outCls, noteCls) {
     const div = document.createElement("div");
-    div.className = "step" + (ev.flagged ? " flagged" : "");
+    div.className = cmdCls.box + (ev.flagged ? " flagged" : "");
     const cmd = document.createElement("div");
-    cmd.className = "cmd"; cmd.textContent = ev.command || "(no command)";
+    cmd.className = cmdCls.cmd; cmd.textContent = ev.command || "(no command)";
     div.appendChild(cmd);
     const body = (ev.stdout || "") + (ev.stderr ? "\n" + ev.stderr : "");
     if (body.trim()) {
-      const out = document.createElement("div"); out.className = "out";
-      out.textContent = body.length > 800 ? body.slice(0, 800) + " ..." : body;
+      const out = document.createElement("div"); out.className = outCls;
+      out.textContent = body.length > 1200 ? body.slice(0, 1200) + " ..." : body;
       div.appendChild(out);
     }
-    if (ev.note) { const n = document.createElement("div"); n.className = "note";
-      n.textContent = ev.note; div.appendChild(n); }
-    consoleEl.appendChild(div);
+    if (ev.note) {
+      const n = document.createElement("div"); n.className = noteCls; n.textContent = ev.note;
+      div.appendChild(n);
+    }
+    return div;
+  }
+
+  function addStep(ev) {
+    consoleEl.appendChild(renderStep(ev, { box: "step", cmd: "cmd" }, "out", "note"));
     consoleEl.scrollTop = consoleEl.scrollHeight;
   }
 
-  const histEl = $("history");
-  let curRun = null;
-  const escHtml = (x) => x.replace(/[&<>"']/g, c => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]));
-  const shortCmd = (c) => { c = (c || "(no command)").replace(/\s+/g, " ").trim();
-    return c.length > 90 ? c.slice(0, 90) + "\u2026" : c; };
+  const VERDICT = {
+    rooted:           { text: "ROOTED",   badge: "ok",   card: "rooted"  },
+    budget_exhausted: { text: "TIMEOUT",  badge: "warn", card: "failed"  },
+    looped:           { text: "LOOPED",   badge: "warn", card: "failed"  },
+    gave_up:          { text: "GAVE UP",  badge: "def",  card: "failed"  },
+    error:            { text: "ERROR",    badge: "err",  card: "errored" },
+  };
 
   function finalizeRun(end) {
     if (!curRun) return;
-    const success = end.success;
-    const outcome = end.outcome || "";
+    const v = end.success ? VERDICT.rooted
+      : (VERDICT[end.outcome] || { text: (end.outcome || "FAILED").toUpperCase(), badge: "def", card: "failed" });
     const traps = end.traps_fired || [];
+
     const card = document.createElement("div");
-    card.className = "runcard " + (success ? "rooted" : (outcome === "budget_exhausted" ? "timeout" : "failed"));
-    const badge = success ? '<span class="badge ok">ROOTED</span>'
-      : '<span class="badge def">' + (outcome === "budget_exhausted" ? "TIMEOUT" : "DEFENDED") + '</span>';
-    const traptxt = traps.length ? '<span class="runtraps">traps: ' + escHtml(traps.join(", ")) + '</span>' : '';
+    card.className = "runcard " + v.card;
+
     const head = document.createElement("div");
     head.className = "runhead";
-    head.innerHTML = '<span class="runno">Run ' + curRun.i + '</span>' + badge
-      + '<span class="runmeta">' + (end.steps_taken || curRun.steps.length) + ' steps \u00b7 '
-      + Math.round(end.wall_clock_s || 0) + 's</span>' + traptxt;
-    const tl = document.createElement("div");
-    tl.className = "runtimeline";
+    head.innerHTML =
+      "<span class=\"caret\">&#9656;</span>" +
+      "<span class=\"runno\">Run " + curRun.i + "</span>" +
+      "<span class=\"badge " + v.badge + "\">" + v.text + "</span>" +
+      "<span class=\"runmeta\">" + (end.steps_taken || curRun.steps.length) + " steps &middot; " +
+        Math.round(end.wall_clock_s || 0) + "s</span>" +
+      (traps.length ? "<span class=\"runtraps\">traps: " + escHtml(traps.join(", ")) + "</span>" : "");
+
+    const body = document.createElement("div");
+    body.className = "runbody collapsed";
     curRun.steps.forEach((st, idx) => {
-      const line = document.createElement("div");
-      let cls = "tl", tag = "";
-      if (st.traps && st.traps.length) { cls += " trap"; tag = " \ud83e\udea4 " + st.traps.join(", "); }
-      if (success && idx === curRun.steps.length - 1) { cls += " root"; tag = " \u2705 rooted"; }
-      else if (st.exit !== 0 && st.exit != null) { cls += " fail"; }
-      line.className = cls;
-      line.innerHTML = '<span class="n">' + st.step + ' \u00b7</span> $ ' + escHtml(shortCmd(st.cmd)) + escHtml(tag);
-      tl.appendChild(line);
+      const isRoot = end.success && idx === curRun.steps.length - 1;
+      const boxCls = "rb-step" + (st.traps && st.traps.length ? " trap" : "") + (isRoot ? " root" : "");
+      const node = renderStep(st, { box: boxCls, cmd: "rb-cmd" }, "rb-out", "rb-note");
+      body.appendChild(node);
     });
-    head.addEventListener("click", () => tl.classList.toggle("collapsed"));
-    card.appendChild(head); card.appendChild(tl);
-    histEl.insertBefore(card, histEl.firstChild);
+    if (!curRun.steps.length) {
+      body.innerHTML = "<div class=\"rb-note\">no steps recorded for this run</div>";
+    }
+
+    head.addEventListener("click", () => {
+      const open = body.classList.toggle("collapsed");
+      head.querySelector(".caret").innerHTML = open ? "&#9656;" : "&#9662;";
+    });
+    card.appendChild(head); card.appendChild(body);
+    histEl.appendChild(card);      // ascending: Run 1, Run 2, ...
     curRun = null;
   }
 
   function onEvent(ev) {
     if (ev.type === "run_index") {
-      $("m-run").textContent = `${ev.i}/${ev.n}`;
+      $("m-run").textContent = ev.i + "/" + ev.n;
       $("m-model").textContent = ev.model || "(mock)";
       $("m-cht").textContent = ev.cht_on ? "ON" : "OFF";
       $("m-mode").textContent = ev.hardened ? "Hardened" : "Plain";
@@ -262,16 +290,19 @@
       addStep(ev);
       if (curRun) {
         const m = (ev.note || "").match(/trap read: ([^;]+)/);
-        curRun.steps.push({ step: ev.step, cmd: ev.command, exit: ev.exit_code,
-          traps: m ? m[1].split(",").map(x => x.trim()) : [] });
+        curRun.steps.push({
+          step: ev.step, command: ev.command, stdout: ev.stdout, stderr: ev.stderr,
+          note: ev.note, flagged: ev.flagged, exit_code: ev.exit_code,
+          traps: m ? m[1].split(",").map(x => x.trim()) : [],
+        });
       }
+    } else if (ev.type === "run_end") {
+      finalizeRun(ev);
     } else if (ev.type === "aggregate") {
       setRate("m-tsr", ev.tsr); setRate("m-dsr", ev.dsr); setRate("m-gbr", ev.gbr);
       $("m-avg").textContent = fmt(ev.avg_runtime_s);
       $("m-outcome").textContent = ev.last_outcome;
       $("m-defense").textContent = ev.traps.length ? ev.traps.join(", ") : "-";
-    } else if (ev.type === "run_end") {
-      finalizeRun(ev);
     } else if (ev.type === "batch_end") {
       $("m-runstatus").textContent = "Completed";
       clearInterval(runtimeTimer);
@@ -283,7 +314,7 @@
   $("runform").addEventListener("submit", async (e) => {
     e.preventDefault();
     $("runbtn").disabled = true;
-    histEl.innerHTML = "";
+    histEl.innerHTML = "";          // fresh timeline per batch
     const f = e.target;
     const payload = {
       backend: f.backend.value, target: f.target.value,
@@ -293,12 +324,13 @@
       root_check_cmd: f.root_check_cmd.value, root_check_expect: "0",
     };
     const r = await fetch("/api/run", { method: "POST",
-      headers: {"Content-Type": "application/json"}, body: JSON.stringify(payload) });
-    const { batch_id, model, cht_on, hardened } = await r.json();
-    $("m-model").textContent = model; $("m-cht").textContent = cht_on ? "ON" : "OFF";
-    $("m-mode").textContent = hardened ? "Hardened" : "Plain";
+      headers: { "Content-Type": "application/json" }, body: JSON.stringify(payload) });
+    const data = await r.json();
+    $("m-model").textContent = data.model;
+    $("m-cht").textContent = data.cht_on ? "ON" : "OFF";
+    $("m-mode").textContent = data.hardened ? "Hardened" : "Plain";
     if (source) source.close();
-    source = new EventSource("/api/stream/" + batch_id);
+    source = new EventSource("/api/stream/" + data.batch_id);
     source.onmessage = (m) => onEvent(JSON.parse(m.data));
     source.onerror = () => { $("runbtn").disabled = false; };
   });
