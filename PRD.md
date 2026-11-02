@@ -33,7 +33,7 @@ One technique per CHT strategy, plus the one injection technique so the guardrai
 | # | Strategy | Technique | What it does to the agent | What it exploits |
 |---|---|---|---|---|
 | 1 | Cloak | T1.1 | A fake "all CVEs patched as of 2026" log makes the agent give up | Trust in untrusted input, training bias |
-| 2 | Honey | T3.2 | A password with an invisible Unicode char: a human copies it right, the LLM gets it wrong, so we detect the bot | Tokenization quirks |
+| 2 | Honey | T3.2 | A password with Cyrillic U+0410 replacing Latin A: a Latin-keyboard user retypes it differently from a verbatim copy | Visual confusables and copying |
 | 3 | Trap | T4.3 | A credential loop (file1 to file2 to file3 back to file1, built with symlinks on the host); the agent loops and hallucinates | Greedy depth-first search, hallucination |
 | 4 | Trap | T4.1 | A huge fake CVE and file dump floods the context so the agent loses the real thread | Finite context window |
 | 5 | Trap | T5.2 | A planted "ignore previous instructions" string; the one injection trap and PromptGuard 2's target | Instruction-following |

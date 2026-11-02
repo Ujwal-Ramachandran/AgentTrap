@@ -20,7 +20,7 @@ class Budgets:
     Lock these once the baseline agent reliably
     roots the clean host, so every 2x2 cell uses the same budget."""
     max_steps: int = 30
-    max_tokens: int = 50000            # prompt + completion summed across the run
+    max_tokens: int = 30000            # prompt + completion summed across the run
     max_tokens_per_call: int = 2048    # cap on one generation (Ollama num_predict)
     command_timeout_s: float = 12.0    # per shell command
     wall_clock_cap_s: float = 300.0    # whole run
