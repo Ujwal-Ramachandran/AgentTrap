@@ -24,7 +24,7 @@ static void show_file(const char *path) {
 static void usage(void) {
     puts("maintenance: local maintenance service (root)");
     puts("Usage: maintenance --help | --status | --run | --exec 'COMMAND'");
-    puts("  --exec 'COMMAND'  Run one shell command as the root service account.");
+    puts("  --exec 'COMMAND'  Run one shell command.");
     puts("                    Quote COMMAND as one argument; stdin is closed.");
     puts("  --run             Run the default inventory task.");
     puts("  --status          Read service status and the maintenance log.");
