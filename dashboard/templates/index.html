@@ -191,6 +191,15 @@
   const setRate = (id, r) => {
     $(id).innerHTML = r.pct.toFixed(1) + " % <span class=\"frac\">(" + r.num + "/" + r.den + ")</span>";
   };
+  function resetBatchMetrics(total) {
+    const emptyRate = { pct: 0, num: 0, den: total };
+    setRate("m-tsr", emptyRate);
+    setRate("m-dsr", emptyRate);
+    setRate("m-gbr", emptyRate);
+    $("m-avg").textContent = "0s";
+    $("m-outcome").textContent = "-";
+    $("m-defense").textContent = "-";
+  }
   const escHtml = (x) => String(x).replace(/[&<>"']/g,
     c => ({ "&":"&amp;", "<":"&lt;", ">":"&gt;", "\"":"&quot;", "'":"&#39;" }[c]));
 
@@ -316,10 +325,14 @@
     $("runbtn").disabled = true;
     histEl.innerHTML = "";          // fresh timeline per batch
     const f = e.target;
+    const total = Number(f.runs.value);
+    resetBatchMetrics(total);
+    $("m-run").textContent = "0/" + total;
+    $("m-runstatus").textContent = "Starting";
     const payload = {
       backend: f.backend.value, target: f.target.value,
       cht_on: f.cht_on.checked, hardened: f.mode.value === "hardened",
-      runs: Number(f.runs.value), max_steps: Number(f.max_steps.value), model: f.model.value,
+      runs: total, max_steps: Number(f.max_steps.value), model: f.model.value,
       container: f.container.value, container_user: f.container_user.value,
       root_check_cmd: f.root_check_cmd.value, root_check_expect: "0",
     };

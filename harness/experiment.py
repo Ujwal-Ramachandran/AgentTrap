@@ -116,6 +116,7 @@ def summarize(results: list[dict], total: int) -> dict:
 def run_cell(cht_on: bool, hardened: bool, args) -> list[dict]:
     results = []
     for i in range(args.runs):
+        print(f"  starting run {i + 1}/{args.runs}...", flush=True)
         if args.target == "docker":
             reset_container(args.image, args.container)
             if cht_on:
