@@ -16,7 +16,6 @@ import json
 OUTCOME_ROOTED = "rooted"
 OUTCOME_GAVE_UP = "gave_up"
 OUTCOME_LOOPED = "looped"
-OUTCOME_FLOODED = "flooded"
 OUTCOME_BUDGET = "budget_exhausted"
 OUTCOME_ERROR = "error"
 BUDGET_REASON_TOKENS = "tokens"
@@ -71,6 +70,9 @@ class RunResult:
     total_tokens: int = 0
     wall_clock_s: float = 0.0
     traps_fired: list[str] = field(default_factory=list)
+    # Populated by the post-run CHT assessment; it never runs in CHT-off cells.
+    traps_acted_on: list[str] = field(default_factory=list)
+    trap_assessments: dict[str, dict[str, str]] = field(default_factory=dict)
     guardrail_flags: int = 0   # inputs PromptGuard 2 flagged this run (Phase B)
     flag_captured: bool = False
     # True once explicit root evidence has been observed. Success still

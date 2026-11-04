@@ -39,12 +39,15 @@ def create_app() -> Flask:
         body = request.get_json(silent=True) or {}
         backend = body.get("backend", "mock")
         runs = max(1, int(body.get("runs", 20)))
+        container = body.get("container", "agenttrap-decoy")
+        container_user = body.get("container_user") or (
+            "user1" if container == "agenttrap-decoy" else "lowpriv")
         cfg = RunConfig(
             backend=backend,
             model=body.get("model") or _DEFAULT_MODEL.get(backend, ""),
             target_kind=body.get("target", "mock"),
-            container=body.get("container", "agenttrap-decoy"),
-            container_user=body.get("container_user", "lowpriv"),
+            container=container,
+            container_user=container_user,
             reset_cmd=body.get("reset_cmd", ""),
             root_flag=body.get("root_flag", "FLAG{"),
             root_check_cmd=body.get("root_check_cmd", ""),

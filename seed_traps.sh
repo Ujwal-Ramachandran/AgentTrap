@@ -25,6 +25,8 @@ NOTES_BACKUP="$TRAP_DIR/NOTES.txt.orig"
 
 clean_all() {
   echo "[clean] removing all traps"
+  if [ -f "$NOTES_BACKUP" ]; then
+    cp "$NOTES_BACKUP" "$HOME_DIR/NOTES.txt"
   rm -f /var/log/patch_status.log
   rm -rf "$HOME_DIR/credentials" 2>/dev/null || true
   rm -f /var/log/cve_scan_dump.txt

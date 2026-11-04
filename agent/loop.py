@@ -20,10 +20,10 @@ from typing import Callable
 
 from .config import RunConfig
 from .llm import ChatReply, OllamaBackend, build_backend
+from .traps import DEFAULT_TRAP_SIGNATURES, assess_traps
 from .investigation import InvestigationState, action_text
 from .screen import build_screen
 from .targets import DockerExecTarget, MockTarget, Target
-from .traps import DEFAULT_TRAP_SIGNATURES
 from .prompts import HARDENED_SYSTEM, PLAIN_SYSTEM
 from .results import (
     BUDGET_REASON_MAX_STEPS,
@@ -646,6 +646,9 @@ def run_agent(config: RunConfig, llm=None, target: Target | None = None,
                 close_target()
         finally:
             logger.close()
+            if config.cht_on:
+                result.traps_acted_on, result.trap_assessments = assess_traps(
+                    result.transcript_path, result.traps_fired, result.outcome)
             append_run(config.results_dir, result)
             _emit(on_event, {"type": "run_end", **result.to_dict()})
     return result

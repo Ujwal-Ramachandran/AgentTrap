@@ -102,6 +102,18 @@
   .runbody { max-height: 320px; overflow-y: auto; padding: 10px 12px;
     border-top: 1px solid var(--line); font-family: var(--mono); font-size: 12px; line-height: 1.5; }
   .runbody.collapsed { display: none; }
+  .run-tabs { display: flex; gap: 6px; margin-bottom: 8px; }
+  .run-tab { width: auto; min-height: 0; padding: 4px 9px; font-size: 11px;
+    background: var(--bg); color: var(--muted); border: 1px solid var(--line); }
+  .run-tab.active { background: rgba(77,163,255,.15); color: var(--accent); }
+  .run-pane.hidden { display: none; }
+  .trap-summary { font-family: system-ui, sans-serif; }
+  .trap-summary .trap-row { display: flex; gap: 10px; padding: 6px 0;
+    border-bottom: 1px dotted var(--line); }
+  .trap-summary .trap-id { min-width: 150px; font-family: var(--mono); color: var(--text); }
+  .trap-summary .trap-fired { color: var(--warn); }
+  .trap-summary .trap-not-fired { color: var(--muted); }
+  .trap-summary .run-diagnosis { color: var(--muted); margin-bottom: 8px; }
   .rb-step { margin-bottom: 8px; border-left: 2px solid var(--line); padding-left: 9px; }
   .rb-step.trap { border-left-color: var(--warn); }
   .rb-step.root { border-left-color: var(--bad); }
@@ -250,6 +262,7 @@
     const v = end.success ? VERDICT.rooted
       : (VERDICT[end.outcome] || { text: (end.outcome || "FAILED").toUpperCase(), badge: "def", card: "failed" });
     const traps = end.traps_fired || [];
+    const trapAssessments = end.trap_assessments || {};
 
     const card = document.createElement("div");
     card.className = "runcard " + v.card;
@@ -266,15 +279,67 @@
 
     const body = document.createElement("div");
     body.className = "runbody collapsed";
+    const logPane = document.createElement("div");
+    logPane.className = "run-pane";
     curRun.steps.forEach((st, idx) => {
       const isRoot = end.success && idx === curRun.steps.length - 1;
       const boxCls = "rb-step" + (st.traps && st.traps.length ? " trap" : "") + (isRoot ? " root" : "");
-      const node = renderStep(st, { box: boxCls, cmd: "rb-cmd" }, "rb-out", "rb-note");
-      body.appendChild(node);
+      logPane.appendChild(renderStep(st, { box: boxCls, cmd: "rb-cmd" }, "rb-out", "rb-note"));
     });
     if (!curRun.steps.length) {
-      body.innerHTML = "<div class=\"rb-note\">no steps recorded for this run</div>";
+      logPane.innerHTML = "<div class=\"rb-note\">no steps recorded for this run</div>";
     }
+    if (curRun.cht_on) {
+      const tabs = document.createElement("div");
+      tabs.className = "run-tabs";
+      const logTab = document.createElement("button");
+      logTab.className = "run-tab active";
+      logTab.textContent = "Log";
+      const trapsTab = document.createElement("button");
+      trapsTab.className = "run-tab";
+      trapsTab.textContent = "Traps";
+      const trapsPane = document.createElement("div");
+      trapsPane.className = "run-pane hidden trap-summary";
+      const knownTraps = [
+        ["T1.1_cloak", "Cloak"],
+        ["T3.2_honeytoken", "Honeytoken"],
+        ["T4.3_loop", "Credential loop"],
+        ["T4.1_flood", "Context flood"],
+        ["T5.2_injection", "Prompt injection"],
+        ["HP_honeypot", "Honeypot"],
+      ];
+      const diagnosis = document.createElement("div");
+      diagnosis.className = "run-diagnosis";
+      diagnosis.textContent = "Outcome: " + (end.outcome || "unknown") +
+        (end.budget_reason ? " (" + end.budget_reason + ")" : "");
+      trapsPane.appendChild(diagnosis);
+      knownTraps.forEach(([id, label]) => {
+        const row = document.createElement("div");
+        row.className = "trap-row";
+        const assessment = trapAssessments[id];
+        const status = assessment ? assessment.status : (traps.includes(id) ? "fired" : "not_observed");
+        const acted = status === "acted_on";
+        row.innerHTML = "<span class=\"trap-id\">" + escHtml(id) + "</span>" +
+          "<span class=\"" + (acted || status === "fired" ? "trap-fired" : "trap-not-fired") + "\">" +
+          (acted ? "Acted on: " : status === "fired" ? "Fired: " : "Not observed: ") +
+          escHtml(label) +
+          (assessment && assessment.evidence ? " - " + escHtml(assessment.evidence) : "") +
+          "</span>";
+        trapsPane.appendChild(row);
+      });
+      logTab.addEventListener("click", () => {
+        logTab.classList.add("active"); trapsTab.classList.remove("active");
+        logPane.classList.remove("hidden"); trapsPane.classList.add("hidden");
+      });
+      trapsTab.addEventListener("click", () => {
+        trapsTab.classList.add("active"); logTab.classList.remove("active");
+        trapsPane.classList.remove("hidden"); logPane.classList.add("hidden");
+      });
+      tabs.appendChild(logTab); tabs.appendChild(trapsTab);
+      body.appendChild(tabs);
+      body.appendChild(trapsPane);
+    }
+    body.appendChild(logPane);
 
     head.addEventListener("click", () => {
       const open = body.classList.toggle("collapsed");
@@ -293,7 +358,7 @@
       $("m-mode").textContent = ev.hardened ? "Hardened" : "Plain";
       $("m-runstatus").textContent = "Running";
       consoleEl.innerHTML = "";
-      curRun = { i: ev.i, steps: [] };
+      curRun = { i: ev.i, steps: [], cht_on: ev.cht_on };
       startRuntime();
     } else if (ev.type === "step") {
       addStep(ev);

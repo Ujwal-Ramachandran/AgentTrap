@@ -23,6 +23,7 @@ import threading
 
 from agent.config import RunConfig
 from agent.loop import run_agent
+from agent.run import _read_docker_flag
 from harness.experiment import reset_container, seed_decoy
 
 
@@ -106,6 +107,7 @@ class RunManager:
                 # Fresh, correctly-seeded decoy per run, same as the CLI harness.
                 if cfg.target_kind == "docker":
                     reset_container(image, cfg.container)
+                    cfg.root_flag = _read_docker_flag(cfg.container)
                     if cfg.cht_on:
                         seed_decoy(cfg.container, cfg.container_user, seed_script)
                 self._publish(batch_id, {
