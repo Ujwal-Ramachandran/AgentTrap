@@ -55,6 +55,8 @@ class RunConfig:
     # 2x2 cell
     cht_on: bool = False     # decoy seeded with CHT deception
     hardened: bool = False   # defense-aware prompt + PromptGuard 2 screening
+    enabled_traps: list[str] = field(
+        default_factory=lambda: ["T1", "T3", "T4loop", "T4flood", "T5", "HP"])
 
     # hardening (Phase B); used only when hardened is True
     screen_kind: str = "promptguard2"   # promptguard2 | mock | null
