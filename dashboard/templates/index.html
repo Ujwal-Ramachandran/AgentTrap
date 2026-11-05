@@ -46,6 +46,7 @@
          padding: 4px 0; }
   .row .k { color: var(--muted); }
   .row .v { font-family: var(--mono); font-weight: 600; }
+  #m-flag { font-size: 11px; }
 
   main { display: grid; grid-template-columns: minmax(0, 1fr) 240px; grid-template-rows: minmax(0, 1fr);
          gap: 20px; flex: 1; min-height: 0; }
@@ -106,6 +107,24 @@
   .run-tab { width: auto; min-height: 0; padding: 4px 9px; font-size: 11px;
     background: var(--bg); color: var(--muted); border: 1px solid var(--line); }
   .run-tab.active { background: rgba(77,163,255,.15); color: var(--accent); }
+  .trap-picker { position: relative; }
+  .trap-picker > label { display: block; }
+  .trap-picker > label > button{ display: block; margin-top: 8px; }
+  .trap-trigger { display: flex; align-items: center; justify-content: space-between;
+    width: 100%; min-height: 44px; padding: 10px 2px 10px 12px; background: var(--bg);
+    color: var(--text); border: 1px solid var(--line); border-radius: 8px;
+    font: inherit; text-align: left; }
+  .trap-trigger::after { content: "\25BE"; color: white; float: right; font-size: 14px; }
+  .trap-picker.open .trap-trigger { outline: 2px solid var(--accent); outline-offset: 1px; }
+  .trap-menu { display: none; position: absolute; z-index: 10; left: 0; right: 0;
+    top: calc(100% + 5px); padding: 8px; background: var(--panel);
+    border: 1px solid var(--line); border-radius: 8px; box-shadow: 0 8px 24px #0008; }
+  .trap-picker.open .trap-menu { display: grid; gap: 4px; }
+  .trap-option { display: flex; flex-direction: row; align-items: center;
+    gap: 8px; padding: 7px 6px; color: var(--text); font-size: 13px; }
+  .trap-option input { width: 16px; height: 16px; margin: 0; accent-color: var(--accent); }
+  .trap-option.select-all { border-bottom: 1px solid var(--line); margin-bottom: 4px;
+    color: var(--accent); }
   .run-pane.hidden { display: none; }
   .trap-summary { font-family: system-ui, sans-serif; }
   .trap-summary .trap-row { display: flex; gap: 10px; padding: 6px 0;
@@ -138,16 +157,33 @@
     <label>Target
       <select name="target"><option value="mock">Mock</option><option value="docker">Docker</option></select>
     </label>
-    <label class="check"><input type="checkbox" name="cht_on"> CHT</label>
+    <div class="trap-picker" id="trap-picker">
+      <label for="trap-trigger">Traps
+        <button type="button" class="trap-trigger" id="trap-trigger">All traps</button>
+        <div class="trap-menu" id="trap-menu">
+          <label class="trap-option select-all"><input type="checkbox" id="trap-select-all"> Select all / Unselect all</label>
+          <label class="trap-option"><input type="checkbox" name="trap" value="T1"> T1.1 Cloak</label>
+          <label class="trap-option"><input type="checkbox" name="trap" value="T3"> T3.2 Honeytoken</label>
+          <label class="trap-option"><input type="checkbox" name="trap" value="T4loop"> T4.3 Credential loop</label>
+          <label class="trap-option"><input type="checkbox" name="trap" value="T4flood"> T4.1 Context flood</label>
+          <label class="trap-option"><input type="checkbox" name="trap" value="T5"> T5.2 Prompt injection</label>
+          <label class="trap-option"><input type="checkbox" name="trap" value="HP"> Honeypot</label>
+        </div>
+      </label>
+    </div>
     <label>Mode
       <select name="mode"><option value="plain">Plain</option><option value="hardened">Hardened</option></select>
     </label>
     <label>Runs <input type="number" name="runs" value="20" min="1" max="50"></label>
     <label>Steps <input type="number" name="max_steps" value="40" min="5" max="120"></label>
     <label>Model <input name="model" value="" placeholder="(default)"></label>
-    <label>Container <input name="container" value="agenttrap-decoy"></label>
+    <label>Container <input name="container" value="agenttrap-decoy"
+      placeholder="Docker image and container name"></label>
     <label>User <input name="container_user" value="user1"></label>
     <label>Root Check <input name="root_check_cmd" value="id -u"></label>
+    <label>Thinking
+      <select name="thinking"><option value="thinking-off">Off</option><option value="thinking-on">On</option></select>
+    </label>
     <button type="submit" id="runbtn">Run</button>
   </form>
   </div>
@@ -159,7 +195,9 @@
     <div class="row"><span class="k">CHT Status</span><span class="v" id="m-cht">OFF</span></div>
     <div class="row"><span class="k">Attacker Mode</span><span class="v" id="m-mode">Plain</span></div>
     <div class="row"><span class="k">Current Run</span><span class="v" id="m-run">0/0</span></div>
+    <div class="row"><span class="k">Generated Flag</span><span class="v" id="m-flag">-</span></div>
     <div class="row"><span class="k">Run Status</span><span class="v" id="m-runstatus">Idle</span></div>
+    <div class="row"><span class="k">Tokens</span><span class="v" id="m-tokens">0 / 0</span></div>
     <div class="row"><span class="k">Runtime</span><span class="v" id="m-runtime">0s</span></div>
     <div class="row"><span class="k">Average Runtime</span><span class="v" id="m-avg">0s</span></div>
   </div>
@@ -196,6 +234,8 @@
   const $ = (id) => document.getElementById(id);
   const consoleEl = $("console");
   const histEl = $("history");
+  const trapPicker = $("trap-picker");
+  const trapTrigger = $("trap-trigger");
   let source = null, runtimeTimer = null, runStart = 0, curRun = null;
 
   const fmt = (s) => { s = Math.round(s); const m = Math.floor(s / 60);
@@ -211,9 +251,35 @@
     $("m-avg").textContent = "0s";
     $("m-outcome").textContent = "-";
     $("m-defense").textContent = "-";
+    $("m-tokens").textContent = "0 / 0";
   }
   const escHtml = (x) => String(x).replace(/[&<>"']/g,
     c => ({ "&":"&amp;", "<":"&lt;", ">":"&gt;", "\"":"&quot;", "'":"&#39;" }[c]));
+  const trapLabels = {
+    T1: "T1.1 Cloak", T3: "T3.2 Honeytoken", T4loop: "T4.3 Credential loop",
+    T4flood: "T4.1 Context flood", T5: "T5.2 Prompt injection", HP: "Honeypot"
+  };
+  function updateTrapTrigger() {
+    const selected = Array.from(document.querySelectorAll("input[name='trap']:checked"));
+    $("trap-select-all").checked = selected.length === 6;
+    trapTrigger.textContent = selected.length === 0 ? "CHT off"
+      : selected.length === 6 ? "All traps"
+      : selected.map(x => trapLabels[x.value]).join(", ");
+  }
+  trapTrigger.addEventListener("click", () => trapPicker.classList.toggle("open"));
+  trapPicker.querySelectorAll("input[name='trap']").forEach(input => {
+    input.addEventListener("change", updateTrapTrigger);
+  });
+  $("trap-select-all").addEventListener("change", (event) => {
+    trapPicker.querySelectorAll("input[name='trap']").forEach(input => {
+      input.checked = event.target.checked;
+    });
+    updateTrapTrigger();
+  });
+  document.addEventListener("click", (event) => {
+    if (!trapPicker.contains(event.target)) trapPicker.classList.remove("open");
+  });
+  updateTrapTrigger();
 
   function startRuntime() {
     runStart = Date.now();
@@ -301,27 +367,31 @@
       const trapsPane = document.createElement("div");
       trapsPane.className = "run-pane hidden trap-summary";
       const knownTraps = [
-        ["T1.1_cloak", "Cloak"],
-        ["T3.2_honeytoken", "Honeytoken"],
-        ["T4.3_loop", "Credential loop"],
-        ["T4.1_flood", "Context flood"],
-        ["T5.2_injection", "Prompt injection"],
-        ["HP_honeypot", "Honeypot"],
+        ["T1", "T1.1 Cloak", "T1.1_cloak"],
+        ["T3", "T3.2 Honeytoken", "T3.2_honeytoken"],
+        ["T4loop", "T4.3 Credential loop", "T4.3_loop"],
+        ["T4flood", "T4.1 Context flood", "T4.1_flood"],
+        ["T5", "T5.2 Prompt injection", "T5.2_injection"],
+        ["HP", "Honeypot", "HP_honeypot"],
       ];
       const diagnosis = document.createElement("div");
       diagnosis.className = "run-diagnosis";
       diagnosis.textContent = "Outcome: " + (end.outcome || "unknown") +
         (end.budget_reason ? " (" + end.budget_reason + ")" : "");
       trapsPane.appendChild(diagnosis);
-      knownTraps.forEach(([id, label]) => {
+      knownTraps.forEach(([selectionId, label, id]) => {
         const row = document.createElement("div");
         row.className = "trap-row";
         const assessment = trapAssessments[id];
+        const enabled = curRun.enabledTraps.includes(selectionId);
         const status = assessment ? assessment.status : (traps.includes(id) ? "fired" : "not_observed");
         const acted = status === "acted_on";
+        const displayStatus = enabled
+          ? (acted ? "Acted on: " : status === "fired" ? "Fired: " : "Not observed: ")
+          : "Disabled: ";
         row.innerHTML = "<span class=\"trap-id\">" + escHtml(id) + "</span>" +
-          "<span class=\"" + (acted || status === "fired" ? "trap-fired" : "trap-not-fired") + "\">" +
-          (acted ? "Acted on: " : status === "fired" ? "Fired: " : "Not observed: ") +
+          "<span class=\"" + (!enabled ? "trap-not-fired" : acted || status === "fired" ? "trap-fired" : "trap-not-fired") + "\">" +
+          displayStatus +
           escHtml(label) +
           (assessment && assessment.evidence ? " - " + escHtml(assessment.evidence) : "") +
           "</span>";
@@ -357,11 +427,17 @@
       $("m-cht").textContent = ev.cht_on ? "ON" : "OFF";
       $("m-mode").textContent = ev.hardened ? "Hardened" : "Plain";
       $("m-runstatus").textContent = "Running";
+      $("m-flag").textContent = ev.flag || "-";
+      $("m-tokens").textContent = "0 / " + (ev.token_limit || 0);
       consoleEl.innerHTML = "";
-      curRun = { i: ev.i, steps: [], cht_on: ev.cht_on };
+      curRun = { i: ev.i, steps: [], cht_on: ev.cht_on,
+        enabledTraps: ev.enabled_traps || ["T1", "T3", "T4loop", "T4flood", "T5", "HP"] };
       startRuntime();
     } else if (ev.type === "step") {
       addStep(ev);
+      if (ev.token_limit) {
+        $("m-tokens").textContent = (ev.total_tokens || 0) + " / " + ev.token_limit;
+      }
       if (curRun) {
         const m = (ev.note || "").match(/trap read: ([^;]+)/);
         curRun.steps.push({
@@ -370,6 +446,9 @@
           traps: m ? m[1].split(",").map(x => x.trim()) : [],
         });
       }
+    } else if (ev.type === "command_start") {
+      $("m-tokens").textContent = (ev.total_tokens || 0) + " / " +
+        (ev.token_limit || 0);
     } else if (ev.type === "run_end") {
       finalizeRun(ev);
     } else if (ev.type === "aggregate") {
@@ -396,11 +475,14 @@
     $("m-runstatus").textContent = "Starting";
     const payload = {
       backend: f.backend.value, target: f.target.value,
-      cht_on: f.cht_on.checked, hardened: f.mode.value === "hardened",
+      cht_on: false, hardened: f.mode.value === "hardened",
       runs: total, max_steps: Number(f.max_steps.value), model: f.model.value,
       container: f.container.value, container_user: f.container_user.value,
       root_check_cmd: f.root_check_cmd.value, root_check_expect: "0",
+      thinking: f.thinking.value,
+      traps: Array.from(f.querySelectorAll("input[name='trap']:checked")).map(x => x.value),
     };
+    payload.cht_on = payload.traps.length > 0;
     const r = await fetch("/api/run", { method: "POST",
       headers: { "Content-Type": "application/json" }, body: JSON.stringify(payload) });
     const data = await r.json();
