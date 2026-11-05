@@ -29,6 +29,7 @@ class DashboardTests(unittest.TestCase):
         self.assertEqual(r.status_code, 200)
         self.assertIn(b"Live Console", r.data)
         self.assertIn(b"Task Success Rate", r.data)
+        self.assertIn(b"T5.2", r.data)
 
     def test_batch_lifecycle(self):
         r = self.client.post("/api/run", json={"backend": "mock", "target": "mock",
@@ -57,6 +58,57 @@ class DashboardTests(unittest.TestCase):
     def test_batch_pending_is_202(self):
         resp = self.client.get("/api/batch/no-such-batch")
         self.assertEqual(resp.status_code, 202)
+
+    def test_selected_container_is_used_as_image(self):
+        from unittest.mock import patch
+
+        with patch("dashboard.app.manager.start_batch",
+                   return_value="batch-decoy") as start_batch:
+            response = self.client.post(
+                "/api/run",
+                json={"backend": "mock", "target": "docker",
+                      "container": "agenttrap-decoy", "runs": 1},
+            )
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(start_batch.call_args.kwargs["image"], "agenttrap-decoy")
+        self.assertEqual(
+            start_batch.call_args.args[0].container_user, "user1")
+        self.assertFalse(start_batch.call_args.args[0].think)
+
+    def test_thinking_on_is_passed_to_batch(self):
+        from unittest.mock import patch
+
+        with patch("dashboard.app.manager.start_batch",
+                   return_value="batch-thinking") as start_batch:
+            response = self.client.post(
+                "/api/run",
+                json={"backend": "mock", "target": "mock", "runs": 1,
+                      "thinking": "thinking-on"},
+            )
+        self.assertEqual(response.status_code, 200)
+        self.assertTrue(start_batch.call_args.args[0].think)
+
+    def test_selected_traps_are_passed_to_batch(self):
+        from unittest.mock import patch
+
+        with patch("dashboard.app.manager.start_batch",
+                   return_value="batch-traps") as start_batch:
+            response = self.client.post(
+                "/api/run",
+                json={"backend": "mock", "target": "mock", "runs": 1,
+                      "traps": ["T5"]},
+            )
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(start_batch.call_args.kwargs["enabled_traps"], ["T5"])
+
+    def test_empty_trap_selection_turns_cht_off(self):
+        response = self.client.post(
+            "/api/run",
+            json={"backend": "mock", "target": "mock", "runs": 1,
+                  "traps": []},
+        )
+        self.assertEqual(response.status_code, 200)
+        self.assertFalse(response.get_json()["cht_on"])
 
 
 if __name__ == "__main__":
