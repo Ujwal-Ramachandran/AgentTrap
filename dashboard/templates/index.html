@@ -79,6 +79,16 @@
   .timeline { max-width: 1400px; margin: 0 auto 28px; padding: 0 16px; }
   .timeline > h2 { font-size: 12px; text-transform: uppercase; letter-spacing: .6px;
     color: var(--muted); margin: 18px 2px 8px; }
+  .trap-batch-summary { display: none; margin-bottom: 10px; padding: 10px 12px;
+    border: 1px solid var(--line); border-radius: 6px; background: var(--panel); }
+  .trap-batch-summary.visible { display: block; }
+  .trap-batch-summary h3 { margin: 0 0 8px; color: var(--muted); font-size: 12px;
+    text-transform: uppercase; letter-spacing: .5px; }
+  .trap-batch-summary table { width: 100%; border-collapse: collapse; font-size: 12px; }
+  .trap-batch-summary th, .trap-batch-summary td { padding: 5px 8px; text-align: left;
+    border-bottom: 1px dotted var(--line); }
+  .trap-batch-summary th { color: var(--muted); font-weight: 500; }
+  .trap-batch-summary td:not(:first-child) { font-family: var(--mono); }
   #history { display: flex; flex-direction: column; gap: 8px; }
   #history:empty::after { content: "Run a batch to see each attack's full timeline here.";
     color: var(--muted); font-size: 12px; }
@@ -136,6 +146,8 @@
   .rb-step { margin-bottom: 8px; border-left: 2px solid var(--line); padding-left: 9px; }
   .rb-step.trap { border-left-color: var(--warn); }
   .rb-step.root { border-left-color: var(--bad); }
+  .step-number { display: inline-block; min-width: 62px; margin-right: 8px;
+    color: var(--muted); font-size: 11px; user-select: none; }
   .rb-cmd { color: var(--accent); white-space: pre-wrap; word-break: break-word; }
   .rb-cmd::before { content: "$ "; color: var(--muted); }
   .rb-out { color: var(--text); opacity: .82; white-space: pre-wrap; word-break: break-word; }
@@ -227,6 +239,13 @@
 
 <div class="timeline">
   <h2>Attack Timeline (per run) &mdash; click a run to expand</h2>
+  <div id="trap-batch-summary" class="trap-batch-summary">
+    <h3>Trap summary for completed runs</h3>
+    <table>
+      <thead><tr><th>Trap</th><th>Fired</th><th>Acted on</th></tr></thead>
+      <tbody id="trap-batch-summary-body"></tbody>
+    </table>
+  </div>
   <div id="history"></div>
 </div>
 
@@ -234,6 +253,8 @@
   const $ = (id) => document.getElementById(id);
   const consoleEl = $("console");
   const histEl = $("history");
+  const trapBatchSummaryEl = $("trap-batch-summary");
+  const trapBatchSummaryBodyEl = $("trap-batch-summary-body");
   const trapPicker = $("trap-picker");
   const trapTrigger = $("trap-trigger");
   let source = null, runtimeTimer = null, runStart = 0, curRun = null;
@@ -243,6 +264,27 @@
   const setRate = (id, r) => {
     $(id).innerHTML = r.pct.toFixed(1) + " % <span class=\"frac\">(" + r.num + "/" + r.den + ")</span>";
   };
+  const trapDisplayLabels = {
+    "T1.1_cloak": "T1.1 Cloak", "T3.2_honeytoken": "T3.2 Honeytoken",
+    "T4.3_loop": "T4.3 Credential loop", "T4.1_flood": "T4.1 Context flood",
+    "T5.2_injection": "T5.2 Prompt injection", "HP_honeypot": "Honeypot"
+  };
+  function renderTrapBatchSummary(stats) {
+    trapBatchSummaryBodyEl.innerHTML = "";
+    if (!stats || !stats.length) {
+      trapBatchSummaryEl.classList.remove("visible");
+      return;
+    }
+    stats.forEach((stat) => {
+      const row = document.createElement("tr");
+      const label = trapDisplayLabels[stat.id] || stat.id;
+      row.innerHTML = "<td>" + escHtml(label) + "</td>" +
+        "<td>" + stat.fired + "/" + stat.total + "</td>" +
+        "<td>" + stat.acted_on + "/" + stat.total + "</td>";
+      trapBatchSummaryBodyEl.appendChild(row);
+    });
+    trapBatchSummaryEl.classList.add("visible");
+  }
   function resetBatchMetrics(total) {
     const emptyRate = { pct: 0, num: 0, den: total };
     setRate("m-tsr", emptyRate);
@@ -295,7 +337,12 @@
     const div = document.createElement("div");
     div.className = cmdCls.box + (ev.flagged ? " flagged" : "");
     const cmd = document.createElement("div");
-    cmd.className = cmdCls.cmd; cmd.textContent = ev.command || "(no command)";
+    cmd.className = cmdCls.cmd; cmd.textContent = "";
+    const stepNumber = document.createElement("span");
+    stepNumber.className = "step-number";
+    stepNumber.textContent = "Step " + (ev.step ?? "?");
+    cmd.appendChild(stepNumber);
+    cmd.appendChild(document.createTextNode(ev.command || "(no command)"));
     div.appendChild(cmd);
     const body = (ev.stdout || "") + (ev.stderr ? "\n" + ev.stderr : "");
     if (body.trim()) {
@@ -456,6 +503,7 @@
       $("m-avg").textContent = fmt(ev.avg_runtime_s);
       $("m-outcome").textContent = ev.last_outcome;
       $("m-defense").textContent = ev.traps.length ? ev.traps.join(", ") : "-";
+      renderTrapBatchSummary(ev.trap_stats);
     } else if (ev.type === "batch_end") {
       $("m-runstatus").textContent = "Completed";
       clearInterval(runtimeTimer);
@@ -468,6 +516,7 @@
     e.preventDefault();
     $("runbtn").disabled = true;
     histEl.innerHTML = "";          // fresh timeline per batch
+    renderTrapBatchSummary([]);
     const f = e.target;
     const total = Number(f.runs.value);
     resetBatchMetrics(total);

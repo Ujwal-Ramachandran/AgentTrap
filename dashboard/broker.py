@@ -46,6 +46,20 @@ def aggregate(results: list[dict], total: int) -> dict:
     bypass = sum(1 for r in results if r.get("guardrail_flags", 0) == 0)
     runtimes = [r["wall_clock_s"] for r in results]
     traps = sorted({t for r in results for t in r.get("traps_fired", [])})
+    trap_stats = {}
+    for result in results:
+        acted_on = set(result.get("traps_acted_on", []))
+        for trap_id in result.get("traps_fired", []):
+            stat = trap_stats.setdefault(
+                trap_id, {"id": trap_id, "fired": 0, "acted_on": 0})
+            stat["fired"] += 1
+            if trap_id in acted_on:
+                stat["acted_on"] += 1
+    trap_stats = [
+        {**stat, "total": completed}
+        for stat in trap_stats.values()
+        if stat["fired"] or stat["acted_on"]
+    ]
     last = results[-1] if results else None
     return {
         "type": "aggregate",
@@ -57,6 +71,7 @@ def aggregate(results: list[dict], total: int) -> dict:
         "avg_runtime_s": round(statistics.mean(runtimes), 1) if runtimes else 0.0,
         "last_outcome": _outcome_label(last["outcome"], last["success"]) if last else "-",
         "traps": traps,
+        "trap_stats": trap_stats,
     }
 
 
