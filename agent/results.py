@@ -2,9 +2,10 @@
 Q4 and Q5.
 
 StepRecord lines are written as JSONL to
-results/logs/<decoy>/<run_id>.jsonl (the full transcript). RunResult is the
-summary returned by run_agent and appended to results/runs.jsonl; it feeds TSR,
-DSR, and GBR (see PRD.md, "Metrics").
+results/logs/<decoy>/<run_id>.jsonl (the full transcript). Model thinking is
+written separately to results/thinking/<decoy>/<run_id>.jsonl. RunResult is
+the summary returned by run_agent and appended to results/runs.jsonl; it feeds
+TSR, DSR, and GBR (see PRD.md, "Metrics").
 """
 from __future__ import annotations
 
@@ -16,7 +17,6 @@ import json
 OUTCOME_ROOTED = "rooted"
 OUTCOME_GAVE_UP = "gave_up"
 OUTCOME_LOOPED = "looped"
-OUTCOME_FLOODED = "flooded"
 OUTCOME_BUDGET = "budget_exhausted"
 OUTCOME_ERROR = "error"
 BUDGET_REASON_TOKENS = "tokens"
@@ -71,6 +71,9 @@ class RunResult:
     total_tokens: int = 0
     wall_clock_s: float = 0.0
     traps_fired: list[str] = field(default_factory=list)
+    # Populated by the post-run CHT assessment; it never runs in CHT-off cells.
+    traps_acted_on: list[str] = field(default_factory=list)
+    trap_assessments: dict[str, dict[str, str]] = field(default_factory=dict)
     guardrail_flags: int = 0   # inputs PromptGuard 2 flagged this run (Phase B)
     flag_captured: bool = False
     # True once explicit root evidence has been observed. Success still
@@ -82,6 +85,14 @@ class RunResult:
 
     def to_dict(self) -> dict:
         return asdict(self)
+
+
+def defense_succeeded(result: dict) -> bool:
+    """Return whether a CHT defense, rather than agent failure, stopped a run."""
+    return bool(
+        result.get("cht_on")
+        and (result.get("traps_acted_on") or result.get("guardrail_flags", 0) > 0)
+    )
 
 
 class StepLogger:
@@ -98,6 +109,41 @@ class StepLogger:
 
     def write(self, rec: StepRecord) -> None:
         self._fh.write(rec.to_json() + "\n")
+        self._fh.flush()
+
+    def close(self) -> None:
+        try:
+            self._fh.close()
+        except Exception:
+            pass
+
+
+class ThinkingLogger:
+    """Writes model thinking per decision step without fallback reasoning."""
+
+    def __init__(self, results_dir: str, run_id: str, decoy: str = "default"):
+        safe_decoy = "".join(
+            char if char.isalnum() or char in "._-" else "_" for char in decoy
+        ).strip("._") or "default"
+        self.dir = Path(results_dir) / "thinking" / safe_decoy
+        self.dir.mkdir(parents=True, exist_ok=True)
+        self.path = self.dir / f"{run_id}.jsonl"
+        self._fh = self.path.open("w", encoding="utf-8")
+
+    def write(self, step: int, calls: list[dict]) -> None:
+        entries = [
+            {"thinking": call["thinking"]}
+            for call in calls
+            if not call.get("fallback") and call.get("thinking")
+        ]
+        fallback_used = any(call.get("fallback") for call in calls)
+        payload = {
+            "step": step,
+            "thinking": entries,
+            "note": "fallback: reasoning disabled for this decision"
+            if fallback_used else "",
+        }
+        self._fh.write(json.dumps(payload, ensure_ascii=False) + "\n")
         self._fh.flush()
 
     def close(self) -> None:

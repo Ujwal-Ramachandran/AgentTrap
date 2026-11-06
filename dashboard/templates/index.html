@@ -46,6 +46,7 @@
          padding: 4px 0; }
   .row .k { color: var(--muted); }
   .row .v { font-family: var(--mono); font-weight: 600; }
+  #m-flag { font-size: 11px; }
 
   main { display: grid; grid-template-columns: minmax(0, 1fr) 240px; grid-template-rows: minmax(0, 1fr);
          gap: 20px; flex: 1; min-height: 0; }
@@ -78,9 +79,37 @@
   .timeline { max-width: 1400px; margin: 0 auto 28px; padding: 0 16px; }
   .timeline > h2 { font-size: 12px; text-transform: uppercase; letter-spacing: .6px;
     color: var(--muted); margin: 18px 2px 8px; }
+  .batch-card { border: 1px solid var(--line); border-left: 3px solid var(--accent);
+    border-radius: 6px; background: var(--panel); }
+  .batch-head { display: flex; align-items: center; gap: 10px; padding: 10px 12px;
+    cursor: pointer; flex-wrap: wrap; user-select: none; }
+  .batch-head:hover { background: rgba(255,255,255,.02); }
+  .batch-head .batch-title { font-family: var(--mono); font-weight: 700; }
+  .batch-head .batch-meta { color: var(--muted); font-size: 12px; }
+  .batch-body { display: none; padding: 10px 12px; border-top: 1px solid var(--line); }
+  .batch-body.open { display: block; }
+  .batch-info { display: flex; flex-wrap: wrap; gap: 8px 18px; margin-bottom: 10px;
+    color: var(--muted); font-family: var(--mono); font-size: 12px; }
+  .trap-batch-summary { display: none; margin-bottom: 10px; padding: 10px 12px;
+    border: 1px solid var(--line); border-radius: 6px; background: var(--panel); }
+  .trap-batch-summary.visible { display: block; }
+  .trap-batch-summary h3 { margin: 0 0 8px; color: var(--muted); font-size: 12px;
+    text-transform: uppercase; letter-spacing: .5px; }
+  .trap-batch-summary table { width: 100%; border-collapse: collapse; font-size: 12px; }
+  .trap-batch-summary th, .trap-batch-summary td { padding: 5px 8px; text-align: left;
+    border-bottom: 1px dotted var(--line); }
+  .trap-batch-summary th { color: var(--muted); font-weight: 500; }
+  .trap-batch-summary td:not(:first-child) { font-family: var(--mono); }
   #history { display: flex; flex-direction: column; gap: 8px; }
   #history:empty::after { content: "Run a batch to see each attack's full timeline here.";
     color: var(--muted); font-size: 12px; }
+  .history-pagination { display: flex; align-items: center; justify-content: center;
+    gap: 12px; margin-top: 12px; }
+  .history-pagination button { width: auto; min-height: 34px; padding: 6px 12px;
+    font-size: 12px; background: var(--panel); color: var(--text);
+    border: 1px solid var(--line); }
+  .history-pagination button:disabled { opacity: .4; }
+  .history-page-info { color: var(--muted); font-family: var(--mono); font-size: 12px; }
   .runcard { border: 1px solid var(--line); border-left-width: 3px; border-radius: 6px;
     background: var(--panel); }
   .runcard.rooted { border-left-color: var(--bad); }
@@ -102,9 +131,41 @@
   .runbody { max-height: 320px; overflow-y: auto; padding: 10px 12px;
     border-top: 1px solid var(--line); font-family: var(--mono); font-size: 12px; line-height: 1.5; }
   .runbody.collapsed { display: none; }
+  .run-tabs { display: flex; gap: 6px; margin-bottom: 8px; }
+  .run-tab { width: auto; min-height: 0; padding: 4px 9px; font-size: 11px;
+    background: var(--bg); color: var(--muted); border: 1px solid var(--line); }
+  .run-tab.active { background: rgba(77,163,255,.15); color: var(--accent); }
+  .trap-picker { position: relative; }
+  .trap-picker > label { display: block; }
+  .trap-picker > label > button{ display: block; margin-top: 8px; }
+  .trap-trigger { display: flex; align-items: center; justify-content: space-between;
+    width: 100%; min-height: 44px; padding: 10px 2px 10px 12px; background: var(--bg);
+    color: var(--text); border: 1px solid var(--line); border-radius: 8px;
+    font: inherit; text-align: left; }
+  .trap-trigger::after { content: "\25BE"; color: white; float: right; font-size: 14px; }
+  .trap-picker.open .trap-trigger { outline: 2px solid var(--accent); outline-offset: 1px; }
+  .trap-menu { display: none; position: absolute; z-index: 10; left: 0; right: 0;
+    top: calc(100% + 5px); padding: 8px; background: var(--panel);
+    border: 1px solid var(--line); border-radius: 8px; box-shadow: 0 8px 24px #0008; }
+  .trap-picker.open .trap-menu { display: grid; gap: 4px; }
+  .trap-option { display: flex; flex-direction: row; align-items: center;
+    gap: 8px; padding: 7px 6px; color: var(--text); font-size: 13px; }
+  .trap-option input { width: 16px; height: 16px; margin: 0; accent-color: var(--accent); }
+  .trap-option.select-all { border-bottom: 1px solid var(--line); margin-bottom: 4px;
+    color: var(--accent); }
+  .run-pane.hidden { display: none; }
+  .trap-summary { font-family: system-ui, sans-serif; }
+  .trap-summary .trap-row { display: flex; gap: 10px; padding: 6px 0;
+    border-bottom: 1px dotted var(--line); }
+  .trap-summary .trap-id { min-width: 150px; font-family: var(--mono); color: var(--text); }
+  .trap-summary .trap-fired { color: var(--warn); }
+  .trap-summary .trap-not-fired { color: var(--muted); }
+  .trap-summary .run-diagnosis { color: var(--muted); margin-bottom: 8px; }
   .rb-step { margin-bottom: 8px; border-left: 2px solid var(--line); padding-left: 9px; }
   .rb-step.trap { border-left-color: var(--warn); }
   .rb-step.root { border-left-color: var(--bad); }
+  .step-number { display: inline-block; min-width: 62px; margin-right: 8px;
+    color: var(--muted); font-size: 11px; user-select: none; }
   .rb-cmd { color: var(--accent); white-space: pre-wrap; word-break: break-word; }
   .rb-cmd::before { content: "$ "; color: var(--muted); }
   .rb-out { color: var(--text); opacity: .82; white-space: pre-wrap; word-break: break-word; }
@@ -126,16 +187,33 @@
     <label>Target
       <select name="target"><option value="mock">Mock</option><option value="docker">Docker</option></select>
     </label>
-    <label class="check"><input type="checkbox" name="cht_on"> CHT</label>
+    <div class="trap-picker" id="trap-picker">
+      <label for="trap-trigger">Traps
+        <button type="button" class="trap-trigger" id="trap-trigger">All traps</button>
+        <div class="trap-menu" id="trap-menu">
+          <label class="trap-option select-all"><input type="checkbox" id="trap-select-all"> Select all / Unselect all</label>
+          <label class="trap-option"><input type="checkbox" name="trap" value="T1"> T1.1 Cloak</label>
+          <label class="trap-option"><input type="checkbox" name="trap" value="T3"> T3.2 Honeytoken</label>
+          <label class="trap-option"><input type="checkbox" name="trap" value="T4loop"> T4.3 Credential loop</label>
+          <label class="trap-option"><input type="checkbox" name="trap" value="T4flood"> T4.1 Context flood</label>
+          <label class="trap-option"><input type="checkbox" name="trap" value="T5"> T5.2 Prompt injection</label>
+          <label class="trap-option"><input type="checkbox" name="trap" value="HP"> Honeypot</label>
+        </div>
+      </label>
+    </div>
     <label>Mode
       <select name="mode"><option value="plain">Plain</option><option value="hardened">Hardened</option></select>
     </label>
     <label>Runs <input type="number" name="runs" value="20" min="1" max="50"></label>
     <label>Steps <input type="number" name="max_steps" value="40" min="5" max="120"></label>
     <label>Model <input name="model" value="" placeholder="(default)"></label>
-    <label>Container <input name="container" value="agenttrap-decoy"></label>
+    <label>Container <input name="container" value="agenttrap-decoy"
+      placeholder="Docker image and container name"></label>
     <label>User <input name="container_user" value="user1"></label>
     <label>Root Check <input name="root_check_cmd" value="id -u"></label>
+    <label>Thinking
+      <select name="thinking"><option value="thinking-off">Off</option><option value="thinking-on">On</option></select>
+    </label>
     <button type="submit" id="runbtn">Run</button>
   </form>
   </div>
@@ -147,7 +225,9 @@
     <div class="row"><span class="k">CHT Status</span><span class="v" id="m-cht">OFF</span></div>
     <div class="row"><span class="k">Attacker Mode</span><span class="v" id="m-mode">Plain</span></div>
     <div class="row"><span class="k">Current Run</span><span class="v" id="m-run">0/0</span></div>
+    <div class="row"><span class="k">Generated Flag</span><span class="v" id="m-flag">-</span></div>
     <div class="row"><span class="k">Run Status</span><span class="v" id="m-runstatus">Idle</span></div>
+    <div class="row"><span class="k">Tokens</span><span class="v" id="m-tokens">0 / 0</span></div>
     <div class="row"><span class="k">Runtime</span><span class="v" id="m-runtime">0s</span></div>
     <div class="row"><span class="k">Average Runtime</span><span class="v" id="m-avg">0s</span></div>
   </div>
@@ -176,23 +256,91 @@
 </div>
 
 <div class="timeline">
-  <h2>Attack Timeline (per run) &mdash; click a run to expand</h2>
+  <h2>Attack history - click a batch to expand</h2>
   <div id="history"></div>
+  <div class="history-pagination" id="history-pagination" hidden>
+    <button type="button" id="history-prev">Previous</button>
+    <span class="history-page-info" id="history-page-info"></span>
+    <button type="button" id="history-next">Next</button>
+  </div>
 </div>
 
 <script>
   const $ = (id) => document.getElementById(id);
   const consoleEl = $("console");
   const histEl = $("history");
+  const trapPicker = $("trap-picker");
+  const trapTrigger = $("trap-trigger");
   let source = null, runtimeTimer = null, runStart = 0, curRun = null;
+  let currentBatch = null, currentBatchRuns = null, historicalMode = false;
+  let historyPage = 1, historyTotalPages = 1, historyLoading = false;
+  let completionAudio = null;
+  let tokenLimit = 0;
 
   const fmt = (s) => { s = Math.round(s); const m = Math.floor(s / 60);
     return m > 0 ? (m + "m " + (s % 60) + "s") : (s + "s"); };
   const setRate = (id, r) => {
     $(id).innerHTML = r.pct.toFixed(1) + " % <span class=\"frac\">(" + r.num + "/" + r.den + ")</span>";
   };
+  const trapDisplayLabels = {
+    "T1.1_cloak": "T1.1 Cloak", "T3.2_honeytoken": "T3.2 Honeytoken",
+    "T4.3_loop": "T4.3 Credential loop", "T4.1_flood": "T4.1 Context flood",
+    "T5.2_injection": "T5.2 Prompt injection", "HP_honeypot": "Honeypot"
+  };
+  function renderTrapBatchSummary(stats, summaryEl, bodyEl) {
+    bodyEl.innerHTML = "";
+    if (!stats || !stats.length) {
+      summaryEl.classList.remove("visible");
+      return;
+    }
+    stats.forEach((stat) => {
+      const row = document.createElement("tr");
+      const label = trapDisplayLabels[stat.id] || stat.id;
+      row.innerHTML = "<td>" + escHtml(label) + "</td>" +
+        "<td>" + stat.fired + "/" + stat.total + "</td>" +
+        "<td>" + stat.acted_on + "/" + stat.total + "</td>";
+      bodyEl.appendChild(row);
+    });
+    summaryEl.classList.add("visible");
+  }
+  function resetBatchMetrics(total) {
+    const emptyRate = { pct: 0, num: 0, den: total };
+    setRate("m-tsr", emptyRate);
+    setRate("m-dsr", emptyRate);
+    setRate("m-gbr", emptyRate);
+    $("m-avg").textContent = "0s";
+    $("m-outcome").textContent = "-";
+    $("m-defense").textContent = "-";
+    $("m-tokens").textContent = "0 / 0";
+    tokenLimit = 0;
+  }
   const escHtml = (x) => String(x).replace(/[&<>"']/g,
     c => ({ "&":"&amp;", "<":"&lt;", ">":"&gt;", "\"":"&quot;", "'":"&#39;" }[c]));
+  const trapLabels = {
+    T1: "T1.1 Cloak", T3: "T3.2 Honeytoken", T4loop: "T4.3 Credential loop",
+    T4flood: "T4.1 Context flood", T5: "T5.2 Prompt injection", HP: "Honeypot"
+  };
+  function updateTrapTrigger() {
+    const selected = Array.from(document.querySelectorAll("input[name='trap']:checked"));
+    $("trap-select-all").checked = selected.length === 6;
+    trapTrigger.textContent = selected.length === 0 ? "CHT off"
+      : selected.length === 6 ? "All traps"
+      : selected.map(x => trapLabels[x.value]).join(", ");
+  }
+  trapTrigger.addEventListener("click", () => trapPicker.classList.toggle("open"));
+  trapPicker.querySelectorAll("input[name='trap']").forEach(input => {
+    input.addEventListener("change", updateTrapTrigger);
+  });
+  $("trap-select-all").addEventListener("change", (event) => {
+    trapPicker.querySelectorAll("input[name='trap']").forEach(input => {
+      input.checked = event.target.checked;
+    });
+    updateTrapTrigger();
+  });
+  document.addEventListener("click", (event) => {
+    if (!trapPicker.contains(event.target)) trapPicker.classList.remove("open");
+  });
+  updateTrapTrigger();
 
   function startRuntime() {
     runStart = Date.now();
@@ -202,13 +350,33 @@
     }, 1000);
   }
 
+  const completionSound = new Audio("/assets/sound/mixkit-positive-notification-951.wav");
+
+  function playCompletionSound() {
+    completionSound.currentTime = 0;
+    completionSound.volume = 1.0;
+    completionSound.play().catch(() => {});
+  }
+
+  function prepareCompletionSound() {
+    const AudioContext = window.AudioContext || window.webkitAudioContext;
+    if (!AudioContext) return;
+    completionAudio = completionAudio || new AudioContext();
+    if (completionAudio.state === "suspended") completionAudio.resume();
+  }
+
   // one rendered step (command + output + note); used by both the live console
   // and the per-run timeline cards.
   function renderStep(ev, cmdCls, outCls, noteCls) {
     const div = document.createElement("div");
     div.className = cmdCls.box + (ev.flagged ? " flagged" : "");
     const cmd = document.createElement("div");
-    cmd.className = cmdCls.cmd; cmd.textContent = ev.command || "(no command)";
+    cmd.className = cmdCls.cmd; cmd.textContent = "";
+    const stepNumber = document.createElement("span");
+    stepNumber.className = "step-number";
+    stepNumber.textContent = "Step " + (ev.step ?? "?");
+    cmd.appendChild(stepNumber);
+    cmd.appendChild(document.createTextNode(ev.command || "(no command)"));
     div.appendChild(cmd);
     const body = (ev.stdout || "") + (ev.stderr ? "\n" + ev.stderr : "");
     if (body.trim()) {
@@ -236,11 +404,88 @@
     error:            { text: "ERROR",    badge: "err",  card: "errored" },
   };
 
+  function formatBatchTime(ts) {
+    if (!ts) return "-";
+    return new Date(ts * 1000).toLocaleString();
+  }
+
+  function createBatchCard(meta) {
+    const card = document.createElement("div");
+    card.className = "batch-card";
+    const head = document.createElement("div");
+    head.className = "batch-head";
+    const title = document.createElement("span");
+    title.className = "batch-title";
+    const trapNames = (meta.enabled_traps || []).join(", ") || "none";
+    title.textContent = formatBatchTime(meta.created_at) + " | " +
+      (meta.model || meta.backend || "unknown") + " | " +
+      (meta.thinking ? "thinking on" : "thinking off") + " | " +
+      (meta.hardened ? "hardened" : "plain") + " | " +
+      (meta.target || "mock") + " | traps: " + trapNames +
+      " | runs: " + (meta.runs || meta.total || 0);
+    const caret = document.createElement("span");
+    caret.className = "caret"; caret.innerHTML = "&#9656;";
+    head.prepend(caret); head.appendChild(title);
+    const headMeta = document.createElement("span");
+    headMeta.className = "batch-meta";
+    headMeta.textContent = meta.batch_id || "";
+    head.appendChild(headMeta);
+
+    const body = document.createElement("div");
+    body.className = "batch-body";
+    const info = document.createElement("div");
+    info.className = "batch-info";
+    body.appendChild(info);
+    const summary = document.createElement("div");
+    summary.className = "trap-batch-summary";
+    summary.innerHTML = "<h3>Trap summary</h3>" +
+      "<table><thead><tr><th>Trap</th><th>Fired</th><th>Acted on</th></tr></thead>" +
+      "<tbody></tbody></table>";
+    body.appendChild(summary);
+    const runs = document.createElement("div");
+    runs.className = "batch-runs";
+    body.appendChild(runs);
+    head.addEventListener("click", () => {
+      const open = body.classList.toggle("open");
+      caret.innerHTML = open ? "&#9662;" : "&#9656;";
+    });
+    card.appendChild(head); card.appendChild(body);
+    histEl.insertBefore(card, histEl.firstChild);
+    return { card, body, info, summary, summaryBody: summary.querySelector("tbody"), runs };
+  }
+
+  function updateHistoryPagination(total, page, totalPages) {
+    historyPage = page;
+    historyTotalPages = totalPages;
+    const pagination = $("history-pagination");
+    pagination.hidden = total === 0;
+    $("history-page-info").textContent = total
+      ? "Page " + page + " of " + totalPages + " (" + total + " batches)"
+      : "";
+    $("history-prev").disabled = page <= 1;
+    $("history-next").disabled = page >= totalPages;
+  }
+
+  function updateBatchInfo(batch, aggregate) {
+    if (!batch || !aggregate) return;
+    batch.info.innerHTML =
+      "<span>Total runtime: " + fmt(aggregate.total_runtime_s || 0) + "</span>" +
+      "<span>Average runtime: " + fmt(aggregate.avg_runtime_s || 0) + "</span>" +
+      "<span>TSR: " + aggregate.tsr.pct.toFixed(1) + "% (" +
+        aggregate.tsr.num + "/" + aggregate.tsr.den + ")</span>" +
+      "<span>DSR: " + aggregate.dsr.pct.toFixed(1) + "% (" +
+        aggregate.dsr.num + "/" + aggregate.dsr.den + ")</span>" +
+      "<span>GBR: " + aggregate.gbr.pct.toFixed(1) + "% (" +
+        aggregate.gbr.num + "/" + aggregate.gbr.den + ")</span>";
+    renderTrapBatchSummary(aggregate.trap_stats, batch.summary, batch.summaryBody);
+  }
+
   function finalizeRun(end) {
     if (!curRun) return;
     const v = end.success ? VERDICT.rooted
       : (VERDICT[end.outcome] || { text: (end.outcome || "FAILED").toUpperCase(), badge: "def", card: "failed" });
     const traps = end.traps_fired || [];
+    const trapAssessments = end.trap_assessments || {};
 
     const card = document.createElement("div");
     card.className = "runcard " + v.card;
@@ -257,37 +502,110 @@
 
     const body = document.createElement("div");
     body.className = "runbody collapsed";
+    const logPane = document.createElement("div");
+    logPane.className = "run-pane";
     curRun.steps.forEach((st, idx) => {
       const isRoot = end.success && idx === curRun.steps.length - 1;
       const boxCls = "rb-step" + (st.traps && st.traps.length ? " trap" : "") + (isRoot ? " root" : "");
-      const node = renderStep(st, { box: boxCls, cmd: "rb-cmd" }, "rb-out", "rb-note");
-      body.appendChild(node);
+      logPane.appendChild(renderStep(st, { box: boxCls, cmd: "rb-cmd" }, "rb-out", "rb-note"));
     });
     if (!curRun.steps.length) {
-      body.innerHTML = "<div class=\"rb-note\">no steps recorded for this run</div>";
+      logPane.innerHTML = "<div class=\"rb-note\">no steps recorded for this run</div>";
     }
+    if (curRun.cht_on) {
+      const tabs = document.createElement("div");
+      tabs.className = "run-tabs";
+      const logTab = document.createElement("button");
+      logTab.className = "run-tab active";
+      logTab.textContent = "Log";
+      const trapsTab = document.createElement("button");
+      trapsTab.className = "run-tab";
+      trapsTab.textContent = "Traps";
+      const trapsPane = document.createElement("div");
+      trapsPane.className = "run-pane hidden trap-summary";
+      const knownTraps = [
+        ["T1", "T1.1 Cloak", "T1.1_cloak"],
+        ["T3", "T3.2 Honeytoken", "T3.2_honeytoken"],
+        ["T4loop", "T4.3 Credential loop", "T4.3_loop"],
+        ["T4flood", "T4.1 Context flood", "T4.1_flood"],
+        ["T5", "T5.2 Prompt injection", "T5.2_injection"],
+        ["HP", "Honeypot", "HP_honeypot"],
+      ];
+      const diagnosis = document.createElement("div");
+      diagnosis.className = "run-diagnosis";
+      diagnosis.textContent = "Outcome: " + (end.outcome || "unknown") +
+        (end.budget_reason ? " (" + end.budget_reason + ")" : "");
+      trapsPane.appendChild(diagnosis);
+      knownTraps.forEach(([selectionId, label, id]) => {
+        const row = document.createElement("div");
+        row.className = "trap-row";
+        const assessment = trapAssessments[id];
+        const enabled = curRun.enabledTraps.includes(selectionId);
+        const status = assessment ? assessment.status : (traps.includes(id) ? "fired" : "not_observed");
+        const acted = status === "acted_on";
+        const displayStatus = enabled
+          ? (acted ? "Acted on: " : status === "fired" ? "Fired: " : "Not observed: ")
+          : "Disabled: ";
+        row.innerHTML = "<span class=\"trap-id\">" + escHtml(id) + "</span>" +
+          "<span class=\"" + (!enabled ? "trap-not-fired" : acted || status === "fired" ? "trap-fired" : "trap-not-fired") + "\">" +
+          displayStatus +
+          escHtml(label) +
+          (assessment && assessment.evidence ? " - " + escHtml(assessment.evidence) : "") +
+          "</span>";
+        trapsPane.appendChild(row);
+      });
+      logTab.addEventListener("click", () => {
+        logTab.classList.add("active"); trapsTab.classList.remove("active");
+        logPane.classList.remove("hidden"); trapsPane.classList.add("hidden");
+      });
+      trapsTab.addEventListener("click", () => {
+        trapsTab.classList.add("active"); logTab.classList.remove("active");
+        trapsPane.classList.remove("hidden"); logPane.classList.add("hidden");
+      });
+      tabs.appendChild(logTab); tabs.appendChild(trapsTab);
+      body.appendChild(tabs);
+      body.appendChild(trapsPane);
+    }
+    body.appendChild(logPane);
 
     head.addEventListener("click", () => {
       const open = body.classList.toggle("collapsed");
       head.querySelector(".caret").innerHTML = open ? "&#9656;" : "&#9662;";
     });
     card.appendChild(head); card.appendChild(body);
-    histEl.appendChild(card);      // ascending: Run 1, Run 2, ...
+    (currentBatchRuns || histEl).appendChild(card);      // runs remain Run 1, Run 2, ...
     curRun = null;
   }
 
   function onEvent(ev) {
     if (ev.type === "run_index") {
+      if (!currentBatch) {
+        const meta = ev.batch_meta || {
+          batch_id: ev.run_id, created_at: Date.now() / 1000, model: ev.model,
+          thinking: false, hardened: ev.hardened, target: "unknown",
+          enabled_traps: ev.enabled_traps, runs: ev.n,
+        };
+        currentBatch = createBatchCard(meta);
+        currentBatchRuns = currentBatch.runs;
+      }
       $("m-run").textContent = ev.i + "/" + ev.n;
       $("m-model").textContent = ev.model || "(mock)";
       $("m-cht").textContent = ev.cht_on ? "ON" : "OFF";
       $("m-mode").textContent = ev.hardened ? "Hardened" : "Plain";
       $("m-runstatus").textContent = "Running";
+      $("m-flag").textContent = ev.flag || "-";
+      tokenLimit = ev.token_limit ?? ev.max_tokens ?? tokenLimit;
+      $("m-tokens").textContent = "0 / " + tokenLimit;
       consoleEl.innerHTML = "";
-      curRun = { i: ev.i, steps: [] };
+      curRun = { i: ev.i, steps: [], cht_on: ev.cht_on,
+        enabledTraps: ev.enabled_traps || ["T1", "T3", "T4loop", "T4flood", "T5", "HP"] };
       startRuntime();
     } else if (ev.type === "step") {
       addStep(ev);
+      if (ev.token_limit != null) {
+        tokenLimit = ev.token_limit;
+      }
+      $("m-tokens").textContent = (ev.total_tokens ?? 0) + " / " + tokenLimit;
       if (curRun) {
         const m = (ev.note || "").match(/trap read: ([^;]+)/);
         curRun.steps.push({
@@ -296,6 +614,11 @@
           traps: m ? m[1].split(",").map(x => x.trim()) : [],
         });
       }
+    } else if (ev.type === "command_start") {
+      if (ev.token_limit != null) {
+        tokenLimit = ev.token_limit;
+      }
+      $("m-tokens").textContent = (ev.total_tokens ?? 0) + " / " + tokenLimit;
     } else if (ev.type === "run_end") {
       finalizeRun(ev);
     } else if (ev.type === "aggregate") {
@@ -303,6 +626,7 @@
       $("m-avg").textContent = fmt(ev.avg_runtime_s);
       $("m-outcome").textContent = ev.last_outcome;
       $("m-defense").textContent = ev.traps.length ? ev.traps.join(", ") : "-";
+      updateBatchInfo(currentBatch, ev);
     } else if (ev.type === "batch_end") {
       $("m-runstatus").textContent = ev.status === "failed" ? "Failed" : "Completed";
       if (ev.status === "failed") {
@@ -312,23 +636,36 @@
         consoleEl.appendChild(error);
       }
       clearInterval(runtimeTimer);
-      $("runbtn").disabled = false;
+      currentBatch = null;
+      currentBatchRuns = null;
+      if (!historicalMode) {
+        $("runbtn").disabled = false;
+        playCompletionSound();
+      }
       if (source) source.close();
+      if (!historicalMode && historyPage !== 1) loadBatchHistory(1);
     }
   }
 
   $("runform").addEventListener("submit", async (e) => {
     e.preventDefault();
     $("runbtn").disabled = true;
-    histEl.innerHTML = "";          // fresh timeline per batch
+    prepareCompletionSound();
     const f = e.target;
+    const total = Number(f.runs.value);
+    resetBatchMetrics(total);
+    $("m-run").textContent = "0/" + total;
+    $("m-runstatus").textContent = "Starting";
     const payload = {
       backend: f.backend.value, target: f.target.value,
-      cht_on: f.cht_on.checked, hardened: f.mode.value === "hardened",
-      runs: Number(f.runs.value), max_steps: Number(f.max_steps.value), model: f.model.value,
+      cht_on: false, hardened: f.mode.value === "hardened",
+      runs: total, max_steps: Number(f.max_steps.value), model: f.model.value,
       container: f.container.value, container_user: f.container_user.value,
       root_check_cmd: f.root_check_cmd.value, root_check_expect: "0",
+      thinking: f.thinking.value,
+      traps: Array.from(f.querySelectorAll("input[name='trap']:checked")).map(x => x.value),
     };
+    payload.cht_on = payload.traps.length > 0;
     const r = await fetch("/api/run", { method: "POST",
       headers: { "Content-Type": "application/json" }, body: JSON.stringify(payload) });
     const data = await r.json();
@@ -346,6 +683,36 @@
     source.onmessage = (m) => onEvent(JSON.parse(m.data));
     source.onerror = () => { $("runbtn").disabled = false; };
   });
+
+  async function loadBatchHistory(page = 1) {
+    if (historyLoading) return;
+    historyLoading = true;
+    const response = await fetch("/api/batches?page=" + page + "&page_size=10");
+    try {
+      if (!response.ok) return;
+      const payload = await response.json();
+      histEl.innerHTML = "";
+      currentBatch = null;
+      currentBatchRuns = null;
+      historicalMode = true;
+      for (const batch of (payload.batches || []).reverse()) {
+        for (const event of (batch.events || [])) onEvent(event);
+        const aggregate = batch.aggregate;
+        if (aggregate && currentBatch) {
+          updateBatchInfo(currentBatch, aggregate);
+        }
+        currentBatch = null;
+        currentBatchRuns = null;
+      }
+      historicalMode = false;
+      updateHistoryPagination(payload.total, payload.page, payload.total_pages);
+    } finally {
+      historyLoading = false;
+    }
+  }
+  $("history-prev").addEventListener("click", () => loadBatchHistory(historyPage - 1));
+  $("history-next").addEventListener("click", () => loadBatchHistory(historyPage + 1));
+  loadBatchHistory();
 </script>
 </body>
 </html>

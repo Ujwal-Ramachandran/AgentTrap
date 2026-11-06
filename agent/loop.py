@@ -20,10 +20,10 @@ from typing import Callable
 
 from .config import RunConfig
 from .llm import ChatReply, OllamaBackend, build_backend
+from .traps import DEFAULT_TRAP_SIGNATURES, assess_traps
 from .investigation import InvestigationState, action_text
 from .screen import build_screen
 from .targets import DockerExecTarget, MockTarget, Target
-from .traps import DEFAULT_TRAP_SIGNATURES
 from .prompts import HARDENED_SYSTEM, PLAIN_SYSTEM
 from .results import (
     BUDGET_REASON_MAX_STEPS,
@@ -37,6 +37,7 @@ from .results import (
     RunResult,
     StepLogger,
     StepRecord,
+    ThinkingLogger,
     append_run,
 )
 
@@ -290,6 +291,8 @@ def run_agent(config: RunConfig, llm=None, target: Target | None = None,
     screen = build_screen(config)
 
     logger = StepLogger(config.results_dir, config.run_id, config.container)
+    thinking_logger = None if config.think is False else ThinkingLogger(
+        config.results_dir, config.run_id, config.container)
     result = RunResult(run_id=config.run_id, cell=config.cell(), model=config.model,
                        cht_on=config.cht_on, hardened=config.hardened)
     result.transcript_path = str(logger.path)
@@ -307,11 +310,16 @@ def run_agent(config: RunConfig, llm=None, target: Target | None = None,
         rec.investigation = investigation.snapshot()
         rec.state_update_error = state_error
         logger.write(rec)
-        _emit(on_event, {"type": "step", **asdict(rec)})
+        if thinking_logger is not None:
+            thinking_logger.write(rec.step, decision_calls)
+        _emit(on_event, {"type": "step", **asdict(rec),
+                         "total_tokens": total_tokens,
+                         "token_limit": b.max_tokens})
 
     _emit(on_event, {"type": "run_start", "run_id": config.run_id,
                      "cell": config.cell(), "model": config.model,
                      "cht_on": config.cht_on, "hardened": config.hardened,
+                     "max_tokens": config.budgets.max_tokens,
                      "ts": time.time()})
 
     system = HARDENED_SYSTEM if config.hardened else PLAIN_SYSTEM
@@ -361,7 +369,9 @@ def run_agent(config: RunConfig, llm=None, target: Target | None = None,
     def call_model(context: list[dict], fallback: bool = False) -> ChatReply:
         nonlocal total_tokens
         call_start = time.monotonic()
-        kwargs = {"think": False} if (fallback or config.think is False) else {}
+        kwargs = {}
+        if fallback or config.think is not None:
+            kwargs["think"] = False if fallback else config.think
         if isinstance(llm, OllamaBackend):
             kwargs.update(max_tokens=max(1, b.max_tokens - total_tokens),
                           timeout_s=max(0.001, b.wall_clock_cap_s - (call_start - start)))
@@ -374,6 +384,7 @@ def run_agent(config: RunConfig, llm=None, target: Target | None = None,
             "completion_tokens": answer.completion_tokens,
             "elapsed_s": round(time.monotonic() - call_start, 3),
             "response": answer.content[:8000],
+            "thinking": getattr(answer, "thinking", ""),
         })
         return answer
 
@@ -507,6 +518,7 @@ def run_agent(config: RunConfig, llm=None, target: Target | None = None,
                 "completion_tokens": sum(c["completion_tokens"] for c in decision_calls),
                 "step_tokens": sum(c["prompt_tokens"] + c["completion_tokens"] for c in decision_calls),
                 "total_tokens": total_tokens,
+                "token_limit": b.max_tokens,
                 "ts": time.time(),
             })
             remaining_time = b.wall_clock_cap_s - (time.monotonic() - start)
@@ -646,6 +658,11 @@ def run_agent(config: RunConfig, llm=None, target: Target | None = None,
                 close_target()
         finally:
             logger.close()
+            if thinking_logger is not None:
+                thinking_logger.close()
+            if config.cht_on:
+                result.traps_acted_on, result.trap_assessments = assess_traps(
+                    result.transcript_path, result.traps_fired, result.outcome)
             append_run(config.results_dir, result)
             _emit(on_event, {"type": "run_end", **result.to_dict()})
     return result

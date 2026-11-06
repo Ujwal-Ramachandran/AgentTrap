@@ -143,9 +143,12 @@ class ResetSecurityTests(unittest.TestCase):
             "outcome": "error", "steps_taken": 0, "error": "shell unavailable"}
         with patch("harness.experiment.reset_container") as reset, \
              patch("harness.experiment.seed_decoy") as seed, \
+             patch("harness.experiment._read_docker_flag",
+                   return_value="FLAG{test-flag}") as read_flag, \
              patch("harness.experiment.run_agent", return_value=result) as run:
             with self.assertRaisesRegex(RuntimeError, "target setup failed: shell unavailable"):
                 run_cell(False, False, args)
         reset.assert_called_once_with("image", "decoy")
+        read_flag.assert_called_once_with("decoy")
         seed.assert_not_called()
         run.assert_called_once()

@@ -25,6 +25,7 @@ class ChatReply:
     content: str
     prompt_tokens: int = 0
     completion_tokens: int = 0
+    thinking: str = ""
 
 
 def _split_system(messages: list[dict]) -> tuple[str, list[dict]]:
@@ -66,6 +67,7 @@ class OllamaBackend:
              timeout_s: float | None = None) -> ChatReply:
         start = time.monotonic()
         parts: list[str] = []
+        thinking_parts: list[str] = []
         prompt_tokens = completion_tokens = 0
         kwargs = {
             "model": self.model,
@@ -82,7 +84,11 @@ class OllamaBackend:
         limit = min(self.call_timeout_s, timeout_s) if timeout_s is not None else self.call_timeout_s
         try:
             for chunk in stream:
-                parts.append((chunk.get("message") or {}).get("content", ""))
+                message = chunk.get("message") or {}
+                parts.append(message.get("content", ""))
+                thinking = message.get("thinking", "")
+                if thinking:
+                    thinking_parts.append(thinking)
                 if chunk.get("done"):
                     prompt_tokens = int(chunk.get("prompt_eval_count", 0) or 0)
                     completion_tokens = int(chunk.get("eval_count", 0) or 0)
@@ -93,9 +99,10 @@ class OllamaBackend:
             if close is not None:
                 close()
         content = "".join(parts)
+        thinking = "".join(thinking_parts)
         if not completion_tokens:
             completion_tokens = max(1, len(content) // 4)
-        return ChatReply(content, prompt_tokens, completion_tokens)
+        return ChatReply(content, prompt_tokens, completion_tokens, thinking)
 
 
 class AnthropicBackend:
