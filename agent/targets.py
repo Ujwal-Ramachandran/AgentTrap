@@ -40,10 +40,11 @@ class DockerExecTarget:
     One `docker exec -i ... bash` process is kept open and fed commands over
     stdin; stdout and stderr are merged and read by a background thread, so a
     per-command timeout never blocks the loop. State persists across commands
-    within a run. reset() optionally runs reset_cmd (the decoy owners' recreate
-    or restore, item 7) and then starts a fresh shell, so nothing leaks between
-    runs (Q7). exec_argv overrides the launch command, which lets tests drive a
-    local bash instead of docker.
+    within a run. reset() starts a fresh shell; container recreation belongs to
+    the dashboard/experiment harness. reset_cmd and reset_each_run are retained
+    for call compatibility, but nonempty reset_cmd values are unsupported.
+    exec_argv overrides the launch command, which lets tests drive a local bash
+    instead of docker.
     """
 
     def __init__(self, container: str, user: str = "lowpriv", reset_cmd: str = "",
@@ -95,10 +96,19 @@ class DockerExecTarget:
         return True
 
     def reset(self) -> None:
+        if self.reset_cmd != "":
+            raise ValueError("reset_cmd is unsupported; use managed container recreation")
         self._session_failed = False
-        if self.reset_each_run and self.reset_cmd:
-            subprocess.run(self.reset_cmd, shell=True, capture_output=True, text=True)
-        self._start_shell()
+        if not self._start_shell():
+            self._session_failed = True
+            raise RuntimeError(f"target reset failed to start shell: {self._start_error}")
+        # Popen success alone does not mean Docker successfully opened the shell.
+        ready = self.run(":", timeout_s=10.0)
+        if ready.exit_code != 0:
+            self._close()
+            self._session_failed = True
+            detail = (ready.stderr or ready.stdout or "shell readiness check failed")[:1000]
+            raise RuntimeError(f"target reset failed: {detail}")
 
     def run(self, command: str, timeout_s: float) -> CmdResult:
         if self._session_failed:

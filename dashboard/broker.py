@@ -204,35 +204,53 @@ class RunManager:
 
         def worker() -> None:
             results: list[dict] = []
-            for i in range(1, runs + 1):
-                cfg = copy.deepcopy(base)
-                cfg.run_id = f"{batch_id}-{i:02d}"
-                # Fresh, correctly-seeded decoy per run, same as the CLI harness.
-                if cfg.target_kind == "docker":
-                    reset_container(image, cfg.container)
-                    cfg.root_flag = _read_docker_flag(cfg.container)
-                    if cfg.cht_on:
-                        seed_decoy(cfg.container, cfg.container_user, seed_script,
-                                   enabled_traps)
-                self._publish(batch_id, {
-                    "type": "run_index", "i": i, "n": runs, "run_id": cfg.run_id,
-                    "model": cfg.model, "cht_on": cfg.cht_on, "hardened": cfg.hardened,
-                    "token_limit": cfg.budgets.max_tokens,
-                    "enabled_traps": enabled_traps or cfg.enabled_traps,
-                    "batch_meta": metadata,
-                    # This is dashboard metadata only. It is never added to the
-                    # agent's model context.
-                    "flag": cfg.root_flag})
-                res = run_agent(cfg, on_event=lambda e, i=i: self._publish(batch_id, {**e, "i": i}))
-                results.append(res.to_dict())
-                self._publish(batch_id, aggregate(results, runs, enabled_traps))
-            self._publish(batch_id, {"type": "batch_end"})
-            with self._lock:
-                record = self._batches.get(batch_id)
-                if record is not None:
-                    record["events"] = list(self._history[batch_id])
-                    record["updated_at"] = time.time()
-                    self._persist_batches()
+            terminal = {"type": "batch_end"}
+            i = 0
+            phase = "setup"
+            try:
+                for i in range(1, runs + 1):
+                    phase = "setup"
+                    cfg = copy.deepcopy(base)
+                    cfg.run_id = f"{batch_id}-{i:02d}"
+                    # Fresh, correctly-seeded decoy per run, same as the CLI harness.
+                    if cfg.target_kind == "docker":
+                        phase = "container reset"
+                        reset_container(image, cfg.container)
+                        cfg.root_flag = _read_docker_flag(cfg.container)
+                        if cfg.cht_on:
+                            phase = "trap seeding"
+                            seed_decoy(cfg.container, cfg.container_user, seed_script,
+                                       enabled_traps)
+                    self._publish(batch_id, {
+                        "type": "run_index", "i": i, "n": runs, "run_id": cfg.run_id,
+                        "model": cfg.model, "cht_on": cfg.cht_on, "hardened": cfg.hardened,
+                        "token_limit": cfg.budgets.max_tokens,
+                        "enabled_traps": enabled_traps or cfg.enabled_traps,
+                        "batch_meta": metadata,
+                        "flag": cfg.root_flag})
+                    phase = "run"
+                    res = run_agent(cfg, on_event=lambda e, i=i: self._publish(batch_id, {**e, "i": i}))
+                    # run_agent reports target.reset() exceptions as zero-step errors.
+                    if cfg.target_kind == "docker" and res.outcome == "error" and res.steps_taken == 0:
+                        phase = "target setup"
+                        raise RuntimeError(res.error or "target setup failed")
+                    results.append(res.to_dict())
+                    self._publish(batch_id, aggregate(results, runs, enabled_traps))
+            except Exception as exc:
+                error = f"Run {i} {phase} failed: {exc}"[:1200]
+                failed = aggregate(results, runs)
+                failed.update(status="failed", error=error, failed_run=i,
+                              last_outcome="Batch Failed" if phase == "run" else "Setup Failed")
+                self._publish(batch_id, failed)
+                terminal.update(status="failed", error=error, failed_run=i)
+            finally:
+                self._publish(batch_id, terminal)
+                with self._lock:
+                    record = self._batches.get(batch_id)
+                    if record is not None:
+                        record["events"] = list(self._history[batch_id])
+                        record["updated_at"] = time.time()
+                        self._persist_batches()
 
         threading.Thread(target=worker, daemon=True).start()
         return batch_id

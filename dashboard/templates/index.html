@@ -256,7 +256,7 @@
 </div>
 
 <div class="timeline">
-  <h2>Attack history &mdash; click a batch to expand</h2>
+  <h2>Attack history - click a batch to expand</h2>
   <div id="history"></div>
   <div class="history-pagination" id="history-pagination" hidden>
     <button type="button" id="history-prev">Previous</button>
@@ -628,7 +628,13 @@
       $("m-defense").textContent = ev.traps.length ? ev.traps.join(", ") : "-";
       updateBatchInfo(currentBatch, ev);
     } else if (ev.type === "batch_end") {
-      $("m-runstatus").textContent = "Completed";
+      $("m-runstatus").textContent = ev.status === "failed" ? "Failed" : "Completed";
+      if (ev.status === "failed") {
+        const error = document.createElement("div");
+        error.className = "note";
+        error.textContent = ev.error || "Batch setup failed";
+        consoleEl.appendChild(error);
+      }
       clearInterval(runtimeTimer);
       currentBatch = null;
       currentBatchRuns = null;
@@ -663,6 +669,12 @@
     const r = await fetch("/api/run", { method: "POST",
       headers: { "Content-Type": "application/json" }, body: JSON.stringify(payload) });
     const data = await r.json();
+    if (!r.ok) {
+      $("m-runstatus").textContent = "Failed";
+      consoleEl.textContent = data.error || "Could not start batch";
+      $("runbtn").disabled = false;
+      return;
+    }
     $("m-model").textContent = data.model;
     $("m-cht").textContent = data.cht_on ? "ON" : "OFF";
     $("m-mode").textContent = data.hardened ? "Hardened" : "Plain";

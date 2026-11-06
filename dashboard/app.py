@@ -48,6 +48,8 @@ def create_app() -> Flask:
     @app.post("/api/run")
     def api_run():
         body = request.get_json(silent=True) or {}
+        if body.get("reset_cmd", "") != "":
+            return jsonify({"error": "reset_cmd is unsupported; container resets use managed recreation"}), 400
         backend = body.get("backend", "mock")
         runs = max(1, int(body.get("runs", 20)))
         container = body.get("container", "agenttrap-decoy")
@@ -59,7 +61,6 @@ def create_app() -> Flask:
             target_kind=body.get("target", "mock"),
             container=container,
             container_user=container_user,
-            reset_cmd=body.get("reset_cmd", ""),
             root_flag=body.get("root_flag", "FLAG{"),
             root_check_cmd=body.get("root_check_cmd", ""),
             root_check_expect=body.get("root_check_expect", "0"),
