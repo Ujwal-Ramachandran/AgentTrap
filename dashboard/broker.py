@@ -100,21 +100,41 @@ class RunManager:
 
         def worker() -> None:
             results: list[dict] = []
-            for i in range(1, runs + 1):
-                cfg = copy.deepcopy(base)
-                cfg.run_id = f"{batch_id}-{i:02d}"
-                # Fresh, correctly-seeded decoy per run, same as the CLI harness.
-                if cfg.target_kind == "docker":
-                    reset_container(image, cfg.container)
-                    if cfg.cht_on:
-                        seed_decoy(cfg.container, cfg.container_user, seed_script)
-                self._publish(batch_id, {
-                    "type": "run_index", "i": i, "n": runs, "run_id": cfg.run_id,
-                    "model": cfg.model, "cht_on": cfg.cht_on, "hardened": cfg.hardened})
-                res = run_agent(cfg, on_event=lambda e, i=i: self._publish(batch_id, {**e, "i": i}))
-                results.append(res.to_dict())
-                self._publish(batch_id, aggregate(results, runs))
-            self._publish(batch_id, {"type": "batch_end"})
+            terminal = {"type": "batch_end"}
+            i = 0
+            phase = "setup"
+            try:
+                for i in range(1, runs + 1):
+                    phase = "setup"
+                    cfg = copy.deepcopy(base)
+                    cfg.run_id = f"{batch_id}-{i:02d}"
+                    # Fresh, correctly-seeded decoy per run, same as the CLI harness.
+                    if cfg.target_kind == "docker":
+                        phase = "container reset"
+                        reset_container(image, cfg.container)
+                        if cfg.cht_on:
+                            phase = "trap seeding"
+                            seed_decoy(cfg.container, cfg.container_user, seed_script)
+                    self._publish(batch_id, {
+                        "type": "run_index", "i": i, "n": runs, "run_id": cfg.run_id,
+                        "model": cfg.model, "cht_on": cfg.cht_on, "hardened": cfg.hardened})
+                    phase = "run"
+                    res = run_agent(cfg, on_event=lambda e, i=i: self._publish(batch_id, {**e, "i": i}))
+                    # run_agent reports target.reset() exceptions as zero-step errors.
+                    if cfg.target_kind == "docker" and res.outcome == "error" and res.steps_taken == 0:
+                        phase = "target setup"
+                        raise RuntimeError(res.error or "target setup failed")
+                    results.append(res.to_dict())
+                    self._publish(batch_id, aggregate(results, runs))
+            except Exception as exc:
+                error = f"Run {i} {phase} failed: {exc}"[:1200]
+                failed = aggregate(results, runs)
+                failed.update(status="failed", error=error, failed_run=i,
+                              last_outcome="Batch Failed" if phase == "run" else "Setup Failed")
+                self._publish(batch_id, failed)
+                terminal.update(status="failed", error=error, failed_run=i)
+            finally:
+                self._publish(batch_id, terminal)
 
         threading.Thread(target=worker, daemon=True).start()
         return batch_id

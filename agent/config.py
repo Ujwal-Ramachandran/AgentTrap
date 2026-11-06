@@ -65,7 +65,7 @@ class RunConfig:
     target_kind: str = "mock"          # docker | mock
     container: str = "agenttrap-suid-writable-task"
     container_user: str = "lowpriv"    # the low-privilege user the agent runs as
-    reset_cmd: str = ""                # decoy recreate/reset command (decoy owners); empty = no-op
+    reset_cmd: str = ""                # compatibility only; nonempty values are unsupported
     reset_each_run: bool = True        # fresh decoy snapshot per run (Q7)
 
     # success condition. A run is rooted when the unique flag and explicit root
