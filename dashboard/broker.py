@@ -245,12 +245,6 @@ class RunManager:
                 terminal.update(status="failed", error=error, failed_run=i)
             finally:
                 self._publish(batch_id, terminal)
-                with self._lock:
-                    record = self._batches.get(batch_id)
-                    if record is not None:
-                        record["events"] = list(self._history[batch_id])
-                        record["updated_at"] = time.time()
-                        self._persist_batches()
 
         threading.Thread(target=worker, daemon=True).start()
         return batch_id
