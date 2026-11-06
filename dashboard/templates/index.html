@@ -79,6 +79,17 @@
   .timeline { max-width: 1400px; margin: 0 auto 28px; padding: 0 16px; }
   .timeline > h2 { font-size: 12px; text-transform: uppercase; letter-spacing: .6px;
     color: var(--muted); margin: 18px 2px 8px; }
+  .batch-card { border: 1px solid var(--line); border-left: 3px solid var(--accent);
+    border-radius: 6px; background: var(--panel); }
+  .batch-head { display: flex; align-items: center; gap: 10px; padding: 10px 12px;
+    cursor: pointer; flex-wrap: wrap; user-select: none; }
+  .batch-head:hover { background: rgba(255,255,255,.02); }
+  .batch-head .batch-title { font-family: var(--mono); font-weight: 700; }
+  .batch-head .batch-meta { color: var(--muted); font-size: 12px; }
+  .batch-body { display: none; padding: 10px 12px; border-top: 1px solid var(--line); }
+  .batch-body.open { display: block; }
+  .batch-info { display: flex; flex-wrap: wrap; gap: 8px 18px; margin-bottom: 10px;
+    color: var(--muted); font-family: var(--mono); font-size: 12px; }
   .trap-batch-summary { display: none; margin-bottom: 10px; padding: 10px 12px;
     border: 1px solid var(--line); border-radius: 6px; background: var(--panel); }
   .trap-batch-summary.visible { display: block; }
@@ -92,6 +103,13 @@
   #history { display: flex; flex-direction: column; gap: 8px; }
   #history:empty::after { content: "Run a batch to see each attack's full timeline here.";
     color: var(--muted); font-size: 12px; }
+  .history-pagination { display: flex; align-items: center; justify-content: center;
+    gap: 12px; margin-top: 12px; }
+  .history-pagination button { width: auto; min-height: 34px; padding: 6px 12px;
+    font-size: 12px; background: var(--panel); color: var(--text);
+    border: 1px solid var(--line); }
+  .history-pagination button:disabled { opacity: .4; }
+  .history-page-info { color: var(--muted); font-family: var(--mono); font-size: 12px; }
   .runcard { border: 1px solid var(--line); border-left-width: 3px; border-radius: 6px;
     background: var(--panel); }
   .runcard.rooted { border-left-color: var(--bad); }
@@ -238,26 +256,26 @@
 </div>
 
 <div class="timeline">
-  <h2>Attack Timeline (per run) &mdash; click a run to expand</h2>
-  <div id="trap-batch-summary" class="trap-batch-summary">
-    <h3>Trap summary for completed runs</h3>
-    <table>
-      <thead><tr><th>Trap</th><th>Fired</th><th>Acted on</th></tr></thead>
-      <tbody id="trap-batch-summary-body"></tbody>
-    </table>
-  </div>
+  <h2>Attack history &mdash; click a batch to expand</h2>
   <div id="history"></div>
+  <div class="history-pagination" id="history-pagination" hidden>
+    <button type="button" id="history-prev">Previous</button>
+    <span class="history-page-info" id="history-page-info"></span>
+    <button type="button" id="history-next">Next</button>
+  </div>
 </div>
 
 <script>
   const $ = (id) => document.getElementById(id);
   const consoleEl = $("console");
   const histEl = $("history");
-  const trapBatchSummaryEl = $("trap-batch-summary");
-  const trapBatchSummaryBodyEl = $("trap-batch-summary-body");
   const trapPicker = $("trap-picker");
   const trapTrigger = $("trap-trigger");
   let source = null, runtimeTimer = null, runStart = 0, curRun = null;
+  let currentBatch = null, currentBatchRuns = null, historicalMode = false;
+  let historyPage = 1, historyTotalPages = 1, historyLoading = false;
+  let completionAudio = null;
+  let tokenLimit = 0;
 
   const fmt = (s) => { s = Math.round(s); const m = Math.floor(s / 60);
     return m > 0 ? (m + "m " + (s % 60) + "s") : (s + "s"); };
@@ -269,10 +287,10 @@
     "T4.3_loop": "T4.3 Credential loop", "T4.1_flood": "T4.1 Context flood",
     "T5.2_injection": "T5.2 Prompt injection", "HP_honeypot": "Honeypot"
   };
-  function renderTrapBatchSummary(stats) {
-    trapBatchSummaryBodyEl.innerHTML = "";
+  function renderTrapBatchSummary(stats, summaryEl, bodyEl) {
+    bodyEl.innerHTML = "";
     if (!stats || !stats.length) {
-      trapBatchSummaryEl.classList.remove("visible");
+      summaryEl.classList.remove("visible");
       return;
     }
     stats.forEach((stat) => {
@@ -281,9 +299,9 @@
       row.innerHTML = "<td>" + escHtml(label) + "</td>" +
         "<td>" + stat.fired + "/" + stat.total + "</td>" +
         "<td>" + stat.acted_on + "/" + stat.total + "</td>";
-      trapBatchSummaryBodyEl.appendChild(row);
+      bodyEl.appendChild(row);
     });
-    trapBatchSummaryEl.classList.add("visible");
+    summaryEl.classList.add("visible");
   }
   function resetBatchMetrics(total) {
     const emptyRate = { pct: 0, num: 0, den: total };
@@ -294,6 +312,7 @@
     $("m-outcome").textContent = "-";
     $("m-defense").textContent = "-";
     $("m-tokens").textContent = "0 / 0";
+    tokenLimit = 0;
   }
   const escHtml = (x) => String(x).replace(/[&<>"']/g,
     c => ({ "&":"&amp;", "<":"&lt;", ">":"&gt;", "\"":"&quot;", "'":"&#39;" }[c]));
@@ -329,6 +348,21 @@
     runtimeTimer = setInterval(() => {
       $("m-runtime").textContent = fmt((Date.now() - runStart) / 1000);
     }, 1000);
+  }
+
+  const completionSound = new Audio("/assets/sound/mixkit-positive-notification-951.wav");
+
+  function playCompletionSound() {
+    completionSound.currentTime = 0;
+    completionSound.volume = 1.0;
+    completionSound.play().catch(() => {});
+  }
+
+  function prepareCompletionSound() {
+    const AudioContext = window.AudioContext || window.webkitAudioContext;
+    if (!AudioContext) return;
+    completionAudio = completionAudio || new AudioContext();
+    if (completionAudio.state === "suspended") completionAudio.resume();
   }
 
   // one rendered step (command + output + note); used by both the live console
@@ -369,6 +403,82 @@
     gave_up:          { text: "GAVE UP",  badge: "def",  card: "failed"  },
     error:            { text: "ERROR",    badge: "err",  card: "errored" },
   };
+
+  function formatBatchTime(ts) {
+    if (!ts) return "-";
+    return new Date(ts * 1000).toLocaleString();
+  }
+
+  function createBatchCard(meta) {
+    const card = document.createElement("div");
+    card.className = "batch-card";
+    const head = document.createElement("div");
+    head.className = "batch-head";
+    const title = document.createElement("span");
+    title.className = "batch-title";
+    const trapNames = (meta.enabled_traps || []).join(", ") || "none";
+    title.textContent = formatBatchTime(meta.created_at) + " | " +
+      (meta.model || meta.backend || "unknown") + " | " +
+      (meta.thinking ? "thinking on" : "thinking off") + " | " +
+      (meta.hardened ? "hardened" : "plain") + " | " +
+      (meta.target || "mock") + " | traps: " + trapNames +
+      " | runs: " + (meta.runs || meta.total || 0);
+    const caret = document.createElement("span");
+    caret.className = "caret"; caret.innerHTML = "&#9656;";
+    head.prepend(caret); head.appendChild(title);
+    const headMeta = document.createElement("span");
+    headMeta.className = "batch-meta";
+    headMeta.textContent = meta.batch_id || "";
+    head.appendChild(headMeta);
+
+    const body = document.createElement("div");
+    body.className = "batch-body";
+    const info = document.createElement("div");
+    info.className = "batch-info";
+    body.appendChild(info);
+    const summary = document.createElement("div");
+    summary.className = "trap-batch-summary";
+    summary.innerHTML = "<h3>Trap summary</h3>" +
+      "<table><thead><tr><th>Trap</th><th>Fired</th><th>Acted on</th></tr></thead>" +
+      "<tbody></tbody></table>";
+    body.appendChild(summary);
+    const runs = document.createElement("div");
+    runs.className = "batch-runs";
+    body.appendChild(runs);
+    head.addEventListener("click", () => {
+      const open = body.classList.toggle("open");
+      caret.innerHTML = open ? "&#9662;" : "&#9656;";
+    });
+    card.appendChild(head); card.appendChild(body);
+    histEl.insertBefore(card, histEl.firstChild);
+    return { card, body, info, summary, summaryBody: summary.querySelector("tbody"), runs };
+  }
+
+  function updateHistoryPagination(total, page, totalPages) {
+    historyPage = page;
+    historyTotalPages = totalPages;
+    const pagination = $("history-pagination");
+    pagination.hidden = total === 0;
+    $("history-page-info").textContent = total
+      ? "Page " + page + " of " + totalPages + " (" + total + " batches)"
+      : "";
+    $("history-prev").disabled = page <= 1;
+    $("history-next").disabled = page >= totalPages;
+  }
+
+  function updateBatchInfo(batch, aggregate) {
+    if (!batch || !aggregate) return;
+    batch.info.innerHTML =
+      "<span>Total runtime: " + fmt(aggregate.total_runtime_s || 0) + "</span>" +
+      "<span>Average runtime: " + fmt(aggregate.avg_runtime_s || 0) + "</span>" +
+      "<span>TSR: " + aggregate.tsr.pct.toFixed(1) + "% (" +
+        aggregate.tsr.num + "/" + aggregate.tsr.den + ")</span>" +
+      "<span>DSR: " + aggregate.dsr.pct.toFixed(1) + "% (" +
+        aggregate.dsr.num + "/" + aggregate.dsr.den + ")</span>" +
+      "<span>GBR: " + aggregate.gbr.pct.toFixed(1) + "% (" +
+        aggregate.gbr.num + "/" + aggregate.gbr.den + ")</span>";
+    renderTrapBatchSummary(aggregate.trap_stats, batch.summary, batch.summaryBody);
+  }
 
   function finalizeRun(end) {
     if (!curRun) return;
@@ -463,28 +573,39 @@
       head.querySelector(".caret").innerHTML = open ? "&#9656;" : "&#9662;";
     });
     card.appendChild(head); card.appendChild(body);
-    histEl.appendChild(card);      // ascending: Run 1, Run 2, ...
+    (currentBatchRuns || histEl).appendChild(card);      // runs remain Run 1, Run 2, ...
     curRun = null;
   }
 
   function onEvent(ev) {
     if (ev.type === "run_index") {
+      if (!currentBatch) {
+        const meta = ev.batch_meta || {
+          batch_id: ev.run_id, created_at: Date.now() / 1000, model: ev.model,
+          thinking: false, hardened: ev.hardened, target: "unknown",
+          enabled_traps: ev.enabled_traps, runs: ev.n,
+        };
+        currentBatch = createBatchCard(meta);
+        currentBatchRuns = currentBatch.runs;
+      }
       $("m-run").textContent = ev.i + "/" + ev.n;
       $("m-model").textContent = ev.model || "(mock)";
       $("m-cht").textContent = ev.cht_on ? "ON" : "OFF";
       $("m-mode").textContent = ev.hardened ? "Hardened" : "Plain";
       $("m-runstatus").textContent = "Running";
       $("m-flag").textContent = ev.flag || "-";
-      $("m-tokens").textContent = "0 / " + (ev.token_limit || 0);
+      tokenLimit = ev.token_limit ?? ev.max_tokens ?? tokenLimit;
+      $("m-tokens").textContent = "0 / " + tokenLimit;
       consoleEl.innerHTML = "";
       curRun = { i: ev.i, steps: [], cht_on: ev.cht_on,
         enabledTraps: ev.enabled_traps || ["T1", "T3", "T4loop", "T4flood", "T5", "HP"] };
       startRuntime();
     } else if (ev.type === "step") {
       addStep(ev);
-      if (ev.token_limit) {
-        $("m-tokens").textContent = (ev.total_tokens || 0) + " / " + ev.token_limit;
+      if (ev.token_limit != null) {
+        tokenLimit = ev.token_limit;
       }
+      $("m-tokens").textContent = (ev.total_tokens ?? 0) + " / " + tokenLimit;
       if (curRun) {
         const m = (ev.note || "").match(/trap read: ([^;]+)/);
         curRun.steps.push({
@@ -494,8 +615,10 @@
         });
       }
     } else if (ev.type === "command_start") {
-      $("m-tokens").textContent = (ev.total_tokens || 0) + " / " +
-        (ev.token_limit || 0);
+      if (ev.token_limit != null) {
+        tokenLimit = ev.token_limit;
+      }
+      $("m-tokens").textContent = (ev.total_tokens ?? 0) + " / " + tokenLimit;
     } else if (ev.type === "run_end") {
       finalizeRun(ev);
     } else if (ev.type === "aggregate") {
@@ -503,20 +626,25 @@
       $("m-avg").textContent = fmt(ev.avg_runtime_s);
       $("m-outcome").textContent = ev.last_outcome;
       $("m-defense").textContent = ev.traps.length ? ev.traps.join(", ") : "-";
-      renderTrapBatchSummary(ev.trap_stats);
+      updateBatchInfo(currentBatch, ev);
     } else if (ev.type === "batch_end") {
       $("m-runstatus").textContent = "Completed";
       clearInterval(runtimeTimer);
-      $("runbtn").disabled = false;
+      currentBatch = null;
+      currentBatchRuns = null;
+      if (!historicalMode) {
+        $("runbtn").disabled = false;
+        playCompletionSound();
+      }
       if (source) source.close();
+      if (!historicalMode && historyPage !== 1) loadBatchHistory(1);
     }
   }
 
   $("runform").addEventListener("submit", async (e) => {
     e.preventDefault();
     $("runbtn").disabled = true;
-    histEl.innerHTML = "";          // fresh timeline per batch
-    renderTrapBatchSummary([]);
+    prepareCompletionSound();
     const f = e.target;
     const total = Number(f.runs.value);
     resetBatchMetrics(total);
@@ -543,6 +671,36 @@
     source.onmessage = (m) => onEvent(JSON.parse(m.data));
     source.onerror = () => { $("runbtn").disabled = false; };
   });
+
+  async function loadBatchHistory(page = 1) {
+    if (historyLoading) return;
+    historyLoading = true;
+    const response = await fetch("/api/batches?page=" + page + "&page_size=10");
+    try {
+      if (!response.ok) return;
+      const payload = await response.json();
+      histEl.innerHTML = "";
+      currentBatch = null;
+      currentBatchRuns = null;
+      historicalMode = true;
+      for (const batch of (payload.batches || []).reverse()) {
+        for (const event of (batch.events || [])) onEvent(event);
+        const aggregate = batch.aggregate;
+        if (aggregate && currentBatch) {
+          updateBatchInfo(currentBatch, aggregate);
+        }
+        currentBatch = null;
+        currentBatchRuns = null;
+      }
+      historicalMode = false;
+      updateHistoryPagination(payload.total, payload.page, payload.total_pages);
+    } finally {
+      historyLoading = false;
+    }
+  }
+  $("history-prev").addEventListener("click", () => loadBatchHistory(historyPage - 1));
+  $("history-next").addEventListener("click", () => loadBatchHistory(historyPage + 1));
+  loadBatchHistory();
 </script>
 </body>
 </html>

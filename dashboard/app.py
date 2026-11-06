@@ -8,6 +8,7 @@ Endpoints:
   POST /api/run                 start a batch; body selects backend/target/cell/runs
   GET  /api/stream/<batch_id>   server-sent events (run_index, step, run_end, aggregate, batch_end)
   GET  /api/batch/<batch_id>    the latest aggregate, or 202 before the first run finishes
+  GET  /api/batches?page=N      paginated batch history, newest first
 
 Ollama is the default backend for real runs; the page also offers the mock
 backend so the dashboard works with no model installed.
@@ -15,8 +16,9 @@ backend so the dashboard works with no model installed.
 from __future__ import annotations
 
 import json
+from pathlib import Path
 
-from flask import Flask, Response, jsonify, render_template, request
+from flask import Flask, Response, jsonify, render_template, request, send_from_directory
 
 from agent.config import Budgets, RunConfig
 from .broker import RunManager
@@ -33,10 +35,15 @@ _DECOY_USERS = {
 
 def create_app() -> Flask:
     app = Flask(__name__)
+    sound_dir = Path(__file__).resolve().parents[1] / "assets" / "sound"
 
     @app.get("/")
     def index():
         return render_template("index.html")
+
+    @app.get("/assets/sound/<path:filename>")
+    def asset_sound(filename: str):
+        return send_from_directory(sound_dir, filename)
 
     @app.post("/api/run")
     def api_run():
@@ -103,6 +110,17 @@ def create_app() -> Flask:
         if agg is not None:
             return jsonify(agg), 200
         return jsonify({"status": "running"}), 202
+
+    @app.get("/api/batches")
+    def api_batches():
+        try:
+            page = int(request.args.get("page", 1))
+            page_size = int(request.args.get("page_size", 10))
+        except ValueError:
+            return jsonify({"error": "page and page_size must be integers"}), 400
+        if page < 1 or page_size < 1 or page_size > 100:
+            return jsonify({"error": "page must be >= 1 and page_size must be 1..100"}), 400
+        return jsonify(manager.batches(page, page_size))
 
     return app
 

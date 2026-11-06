@@ -518,6 +518,7 @@ def run_agent(config: RunConfig, llm=None, target: Target | None = None,
                 "completion_tokens": sum(c["completion_tokens"] for c in decision_calls),
                 "step_tokens": sum(c["prompt_tokens"] + c["completion_tokens"] for c in decision_calls),
                 "total_tokens": total_tokens,
+                "token_limit": b.max_tokens,
                 "ts": time.time(),
             })
             remaining_time = b.wall_clock_cap_s - (time.monotonic() - start)
