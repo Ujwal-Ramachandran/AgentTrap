@@ -40,13 +40,24 @@ def _rate(num: int, den: int) -> dict:
     return {"pct": round(100 * num / den, 1) if den else 0.0, "num": num, "den": den}
 
 
-def aggregate(results: list[dict], total: int) -> dict:
+def aggregate(results: list[dict], total: int,
+               enabled_traps: list[str] | None = None) -> dict:
     completed = len(results)
     rooted = sum(1 for r in results if r["success"])
     bypass = sum(1 for r in results if r.get("guardrail_flags", 0) == 0)
     runtimes = [r["wall_clock_s"] for r in results]
     traps = sorted({t for r in results for t in r.get("traps_fired", [])})
-    trap_stats = {}
+    trap_ids = {
+        "T1": "T1.1_cloak", "T3": "T3.2_honeytoken",
+        "T4loop": "T4.3_loop", "T4flood": "T4.1_flood",
+        "T5": "T5.2_injection", "HP": "HP_honeypot",
+    }
+    trap_stats = {
+        trap_ids.get(selection, selection): {
+            "id": trap_ids.get(selection, selection), "fired": 0, "acted_on": 0,
+        }
+        for selection in (enabled_traps or [])
+    }
     for result in results:
         acted_on = set(result.get("traps_acted_on", []))
         for trap_id in result.get("traps_fired", []):
@@ -56,9 +67,8 @@ def aggregate(results: list[dict], total: int) -> dict:
             if trap_id in acted_on:
                 stat["acted_on"] += 1
     trap_stats = [
-        {**stat, "total": completed}
+        {**stat, "total": total}
         for stat in trap_stats.values()
-        if stat["fired"] or stat["acted_on"]
     ]
     last = results[-1] if results else None
     return {
@@ -138,7 +148,7 @@ class RunManager:
                     "flag": cfg.root_flag})
                 res = run_agent(cfg, on_event=lambda e, i=i: self._publish(batch_id, {**e, "i": i}))
                 results.append(res.to_dict())
-                self._publish(batch_id, aggregate(results, runs))
+                self._publish(batch_id, aggregate(results, runs, enabled_traps))
             self._publish(batch_id, {"type": "batch_end"})
 
         threading.Thread(target=worker, daemon=True).start()
