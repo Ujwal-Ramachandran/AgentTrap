@@ -8,7 +8,7 @@ See PRD.md for each stage's purpose and CLAUDE.md for constraints. Four people, 
 |---|---|
 | Ujwal | Attacker agent loop on Ollama; hardened-agent config; Flask dashboard UI (with Ivan's input); integration |
 | Bhageerath | Shell-on-host decoy (with Dan); the Trap techniques, including the symlink loop he proposed |
-| Dan | Run harness (N runs, logging TSR, DSR, GBR, tokens, time); shell-on-host decoy (with Bhageerath); Cloak and Honey techniques |
+| Dan | Run harness (N runs, logging TSR, DSR, tokens, time); shell-on-host decoy (with Bhageerath); Cloak and Honey techniques |
 | Ivan | Research: pull CHT and PromptGuard, threat model and framework mapping; dashboard content and insights for Ujwal |
 
 ## Delivery phase (stages 5 to 7: experiment, demo and write-up, submit)

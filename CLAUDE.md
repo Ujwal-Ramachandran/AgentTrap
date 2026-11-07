@@ -4,18 +4,18 @@ Always-on context for AgentTrap. Read this first in every session. For detail, f
 
 ## What AgentTrap is
 
-AgentTrap is a resilience study of a small, locally run LLM penetration-testing agent. A local LLM agent gets a shell on a sandboxed Linux decoy host and tries to root it. The host is seeded with Cloak, Honey, Trap (CHT) deception that targets the agent LLM's own reasoning weaknesses. We measure how far the agent is degraded, then harden it (a defense-aware system prompt plus Meta PromptGuard 2 screening the agent's inputs) and measure whether that restores performance. Everything runs on one laptop, free.
+AgentTrap is a resilience study of a small, locally run LLM penetration-testing agent. A local LLM agent gets a shell on a sandboxed Linux decoy host and tries to root it. The host is seeded with Cloak, Honey, Trap (CHT) deception that targets the agent LLM's own reasoning weaknesses. We measure how far the agent is degraded, then harden it with a defense-aware system prompt, quarantine, recovery, and context control. Everything runs on one laptop, free.
 
 ## Locked decisions
 
 - Decoy is shell-on-host, a sandboxed Linux container or VM, not a web form. The agent gets a real shell.
 - Experiment is a 2x2: CHT off/on by plain/hardened agent, 20 to 50 runs per cell.
 - Five seeded techniques: four deception (Cloak T1.1, Honey T3.2, Trap T4.3, Trap T4.1) plus one prompt injection (Trap T5.2). Detailed in PRD.md.
-- Three metrics reported together: Task Success Rate (TSR, primary), Defense Success Rate (DSR), Guardrail Bypass Rate (GBR). Detailed in PRD.md.
+- Two metrics reported together: Task Success Rate (TSR, primary) and Defense Success Rate (DSR). Detailed in PRD.md.
 
 ## Hard constraints (non-negotiable)
 
-- One NVIDIA RTX 4060 laptop, 8GB VRAM. One 7 to 8B model at a time (Qwen3 8B or Llama 3.1 8B, Q4) plus small classifiers (PromptGuard 2, 22M or 86M).
+- One NVIDIA RTX 4060 laptop, 8GB VRAM. One 7 to 8B model at a time (Qwen3 8B or Llama 3.1 8B, Q4).
 - Open-source and local first, via Ollama. Everything free. Paid APIs only as an optional, clearly marked fallback.
 - Passive defense only: traps, misdirection, honeytokens. Never implement the paper's reverse-shell hack-back (T6.1).
 - Fully self-contained: the agent attacks our own decoy on our own machine. No external systems, no network egress from the sandbox.
@@ -23,7 +23,7 @@ AgentTrap is a resilience study of a small, locally run LLM penetration-testing 
 
 ## Honest framing
 
-This is a resilience study of a small local agent. It is not a claim that we "defeat AI attackers" or that "modern guardrails are weak." PromptGuard 2 is expected to catch only the one injection trap, and we state that narrowly: an injection filter is necessary but not sufficient, because deception leaves no injection signature. We prove baseline competence first and run a stronger-attacker honesty check.
+This is a resilience study of a small local agent. It is not a claim that we "defeat AI attackers" or that "modern guardrails are weak." We prove baseline competence first and run a stronger-attacker honesty check.
 
 ## Where to look
 

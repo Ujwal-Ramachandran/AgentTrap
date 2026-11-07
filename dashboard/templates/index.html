@@ -242,8 +242,6 @@
         <div class="val" id="m-tsr">- <span class="frac"></span></div></div>
       <div class="metric"><div class="name">Defense Success Rate (DSR)</div>
         <div class="val" id="m-dsr">- <span class="frac"></span></div></div>
-      <div class="metric"><div class="name">Guardrail Bypass Rate (GBR)</div>
-        <div class="val" id="m-gbr">- <span class="frac"></span></div></div>
     </div>
   </main>
 
@@ -307,7 +305,6 @@
     const emptyRate = { pct: 0, num: 0, den: total };
     setRate("m-tsr", emptyRate);
     setRate("m-dsr", emptyRate);
-    setRate("m-gbr", emptyRate);
     $("m-avg").textContent = "0s";
     $("m-outcome").textContent = "-";
     $("m-defense").textContent = "-";
@@ -474,9 +471,7 @@
       "<span>TSR: " + aggregate.tsr.pct.toFixed(1) + "% (" +
         aggregate.tsr.num + "/" + aggregate.tsr.den + ")</span>" +
       "<span>DSR: " + aggregate.dsr.pct.toFixed(1) + "% (" +
-        aggregate.dsr.num + "/" + aggregate.dsr.den + ")</span>" +
-      "<span>GBR: " + aggregate.gbr.pct.toFixed(1) + "% (" +
-        aggregate.gbr.num + "/" + aggregate.gbr.den + ")</span>";
+        aggregate.dsr.num + "/" + aggregate.dsr.den + ")</span>";
     renderTrapBatchSummary(aggregate.trap_stats, batch.summary, batch.summaryBody);
   }
 
@@ -622,7 +617,7 @@
     } else if (ev.type === "run_end") {
       finalizeRun(ev);
     } else if (ev.type === "aggregate") {
-      setRate("m-tsr", ev.tsr); setRate("m-dsr", ev.dsr); setRate("m-gbr", ev.gbr);
+      setRate("m-tsr", ev.tsr); setRate("m-dsr", ev.dsr);
       $("m-avg").textContent = fmt(ev.avg_runtime_s);
       $("m-outcome").textContent = ev.last_outcome;
       $("m-defense").textContent = ev.traps.length ? ev.traps.join(", ") : "-";

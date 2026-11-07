@@ -26,7 +26,7 @@ Backup: `ujwal/e2e` is untouched on the remote. Nothing here has been pushed to
 - Trap-firing detection (`traps_fired`) and `agent/traps.py` (six-trap signatures,
   honeytoken keyed on the invisible U+200B char).
 - 2x2 experiment harness (`harness/experiment.py`): resets + reseeds the decoy per
-  run and reports TSR / DSR / GBR.
+  run and reports TSR / DSR.
 - Custom enumeration-required CHT decoy (`decoy/Dockerfile`, `decoy/README.md`) and
   the six-trap `seed_traps.sh`.
 - Flask + SSE dashboard batch view, `OVERVIEW.md`, and the test suite.
@@ -59,8 +59,6 @@ Backup: `ujwal/e2e` is untouched on the remote. Nothing here has been pushed to
 
 ## Known open items (not bugs, for interpretation)
 - Baseline competence is still variable at small N (rabbit-holing); run at N>=10.
-- Hardened cells need `transformers` + the PromptGuard 2 license for a real GBR;
-  until then use `--screen mock` (GBR is a mock number).
 - The deception effects (flood, injection) are not yet cleanly isolated at N=3;
   trap firing depends on the agent's enumeration path.
 

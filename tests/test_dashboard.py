@@ -51,7 +51,7 @@ class DashboardTests(unittest.TestCase):
             time.sleep(0.05)
         self.assertIsNotNone(agg, "batch did not produce an aggregate")
         self.assertEqual(agg["completed"], total)
-        for key in ("tsr", "dsr", "gbr"):
+        for key in ("tsr", "dsr"):
             self.assertEqual(agg[key]["den"], total)
             self.assertIn("pct", agg[key])
         self.assertIn(agg["last_outcome"],
@@ -171,7 +171,6 @@ class DashboardTests(unittest.TestCase):
                 self.assertEqual(agg["completed"], count)
                 self.assertEqual(agg["dsr"]["num"], count)
                 self.assertEqual(agg["tsr"]["num"], 0)
-                self.assertEqual(agg["gbr"]["num"], count)
                 self.assertEqual(agg["failed_run"], count + 1)
                 self.assertTrue(agg["error"])
                 with patch("dashboard.app.manager", manager):

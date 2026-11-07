@@ -28,7 +28,7 @@ class Budgets:
     max_no_cmd_retries: int = 2        # reprompts when a reply carries no command
     obs_char_limit: int = 1800         # max chars of output fed back to the model
     obs_line_limit: int = 32           # max output lines fed back to the model
-    context_recent_steps: int = 3      # raw command/observation pairs retained
+    context_recent_steps: int = 5      # raw command/observation pairs retained
     context_char_limit: int = 6000     # cap on non-system request context
     ledger_char_limit: int = 900       # recent neutral observations
     failure_ledger_char_limit: int = 500

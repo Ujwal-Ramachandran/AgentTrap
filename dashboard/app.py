@@ -1,7 +1,7 @@
 """Flask + SSE dashboard app (Phase C).
 
 Runs a batch of N agent runs and streams the experiment view: live console on the
-left, TSR / DSR / GBR on the right, run progress and outcome around them.
+left, TSR / DSR on the right, run progress and outcome around them.
 
 Endpoints:
   GET  /                        the dashboard page

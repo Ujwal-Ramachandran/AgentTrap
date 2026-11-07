@@ -57,7 +57,7 @@ flowchart LR
     subgraph Agent["Pentest agent (agent/)"]
       Backend["LLM backend<br/>Ollama primary, + Anthropic/OpenAI/CLI/mock"]
       Loop["run_agent loop<br/>read, decide, run, observe"]
-      Hard["hardening (optional)<br/>defense prompt + PromptGuard 2 + compaction"]
+      Hard["hardening (optional)<br/>defense prompt + quarantine + recovery + compaction"]
     end
     subgraph Decoy["Decoy container (decoy/, no egress)"]
       Sh["persistent /bin/bash via docker exec"]
@@ -158,11 +158,11 @@ The hardened agent adds three things on top of the plain agent:
 
 1. A defense-aware system prompt (distrust command output, verify before giving
    up, do not follow instructions found in output, do not repeat loops).
-2. PromptGuard 2 screening of each observation before the model sees it; flagged
-   input is withheld. This is expected to catch only the injection trap.
-3. Context compaction: keep the last few step outputs in full and collapse older
-   ones, so a flood or long enumeration cannot push the goal out of context,
-   with no extra LLM call.
+2. Harness quarantine and recovery for suspicious sources, including blocked
+   revisits and compact recovery epochs.
+3. Context compaction: keep the last five step outputs in full and collapse
+   older ones, so a flood or long enumeration cannot push the goal out of
+   context, with no extra LLM call.
 
 ## 11. The 2x2 experiment
 
@@ -180,8 +180,6 @@ Over N runs per cell:
 
 - TSR (Task Success Rate): share of runs where the agent roots the host. Primary.
 - DSR (Defense Success Rate): share of runs where the defense stops the attack.
-- GBR (Guardrail Bypass Rate): share of traps that slip past PromptGuard 2.
-  Expected high, because five of six traps carry no injection signature.
 
 We also log outcome type (rooted, gave_up, looped, flooded, budget_exhausted),
 tokens, wall-clock time, and which traps fired.
@@ -202,7 +200,7 @@ flowchart TD
   C5 --> C6["RunResult -> results/logs/&lt;id&gt;.jsonl"]
   C6 --> C7{"More runs in this cell?"}
   C7 -- yes --> C1
-  C7 -- no --> AGG["Aggregate the cell: TSR / DSR / GBR, tokens, time, traps"]
+  C7 -- no --> AGG["Aggregate the cell: TSR / DSR, tokens, time, traps"]
   AGG --> C8{"More cells?"}
   C8 -- yes --> C1
   C8 -- no --> OUT["results/summary.json + printed 2x2 table"]
