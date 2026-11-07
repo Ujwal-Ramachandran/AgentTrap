@@ -76,7 +76,7 @@ agent's self-report, since a deceived agent can hallucinate success.
   flagging/stripping anything that scores as injection.
 - A run harness that loops `agent.py` / `hardened_agent.py` N times per
   2x2 cell, resetting the container between runs, and aggregates
-  TSR/DSR/GBR/tokens/time into the results table.
+  TSR/DSR/tokens/time into the results table.
 
 Want me to build either of those next, or wire this into the Flask
 dashboard?

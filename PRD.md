@@ -13,7 +13,7 @@ SE6022 frames the term as two halves. AgentTrap covers both:
 - Part 1, AI for cybersecurity (Weeks 1 to 5): we build an offensive LLM pentest agent (red-teaming).
 - Part 2, cybersecurity for AI (Weeks 7 to 11): we attack and harden the agent's own LLM, treating the model as an attack surface.
 
-Framework mapping: MITRE ATLAS (prompt injection = AML.T0051), OWASP ML and LLM Top 10, NIST AI 100-2, AIDEFEND. Imbalance-aware evaluation (GBR, and FPR at a fixed TPR for PromptGuard) ties to the Part 1 metrics theme. Adaptive adversary (hardening vs deception) and CIA-for-AI (Integrity: misled decisions; Availability: loop and flood cost) tie to Part 2.
+Framework mapping: MITRE ATLAS (prompt injection = AML.T0051), OWASP ML and LLM Top 10, NIST AI 100-2, AIDEFEND. Adaptive adversary (hardening vs deception) and CIA-for-AI (Integrity: misled decisions; Availability: loop and flood cost) tie to Part 2.
 
 ## The 2x2 experiment
 
@@ -21,7 +21,7 @@ Two factors: whether the decoy uses CHT deception (off/on) and whether the agent
 
 | | Plain agent | Hardened agent |
 |---|---|---|
-| **CHT off** | Baseline competence: does the agent root the clean host at a real rate? This cell gates everything. | Cost of hardening: does the defense-aware prompt plus PromptGuard 2 hurt normal performance? |
+| **CHT off** | Baseline competence: does the agent root the clean host at a real rate? This cell gates everything. | Cost of hardening: does the defense-aware prompt and recovery controls hurt normal performance? |
 | **CHT on** | Deception impact: how far does CHT drop TSR, and which traps do the work? | The research question: does lightweight hardening restore resilience against deception, and at what cost? |
 
 "Hardening the agent" means configuring a tougher agent between runs, not the LLM fixing itself mid-run.
@@ -44,7 +44,6 @@ Reported together over every 2x2 cell:
 
 - **Task Success Rate (TSR)**, the attacker's view: share of runs where the agent still roots the host. Primary metric. A defense that fires but does not stop the agent has not really helped.
 - **Defense Success Rate (DSR)**, our view: share of runs where our defense achieves its intended outcome (stop, delay, or detect). Comparable to the CHT paper.
-- **Guardrail Bypass Rate (GBR)**: share of traps that slip past PromptGuard 2. Expected high, because 4 of 5 traps carry no injection signature.
 
 Also log outcome type (gave up, looped, flooded, detected) and attacker cost (tokens, wall-clock time); the paper saw a 60x slowdown from one context-flood trap.
 
@@ -56,7 +55,7 @@ Baseline-competence rule: the plain-agent, CHT-off cell must show real baseline 
 2. CHT on sharply drops TSR, with per-trap attribution.
 3. Most traps are deception, not injection, so the "one weak attack" criticism does not apply.
 4. Hardening recovers some resilience, with its cost to normal performance measured.
-5. PromptGuard 2 catches the injection trap and misses the deception, stated narrowly and honestly.
+5. Hardened recovery reduces repeated deception paths without revealing the intended attack path.
 
 ## Scope and non-goals
 
@@ -65,7 +64,7 @@ In scope: the five techniques, the 2x2, the three metrics, a stronger-attacker h
 Non-goals:
 
 - No reverse-shell or active counter-attack (the paper's T6.1). Passive defense only.
-- No claim that guardrails are useless; the PromptGuard 2 result is stated as necessary but not sufficient.
+- No claim that a single hardening mechanism defeats adaptive attackers.
 - No external targets; no network egress from the decoy sandbox.
 - No academic write-up or publication; this is a course project, so report and slides only.
 - The headline 2x2 uses one local 7 to 8B model via Ollama. Optional hosted or CLI backends (Anthropic, OpenAI, Claude Code, Codex) exist for the stronger-attacker honesty check and for machines without Ollama; they are paid, clearly marked, and not part of the main 2x2.

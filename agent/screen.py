@@ -4,7 +4,7 @@ When the agent is hardened, each observation (the shell output fed back to the
 model) is screened first. PromptGuard2Screen is Meta PromptGuard 2, a small
 DeBERTa classifier that flags prompt-injection text; it is expected to catch the
 one injection trap (T5.2) and miss the four deception traps, which is the point
-of GBR (see PRD.md). NullScreen never flags (plain cells). MockScreen flags a
+of optional input screening. NullScreen never flags (plain cells). MockScreen flags a
 marker, for tests.
 
 A screen returns a ScreenResult; the loop records screened/flagged per step,

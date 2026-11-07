@@ -15,15 +15,15 @@ from harness.experiment import summarize  # noqa: E402
 class SummarizeTests(unittest.TestCase):
     def test_rates_and_union(self):
         results = [
-            {"success": True, "outcome": "rooted", "total_tokens": 100,
-             "wall_clock_s": 1.0, "guardrail_flags": 0, "traps_fired": []},
-            {"success": False, "outcome": "gave_up", "total_tokens": 300,
-             "wall_clock_s": 3.0, "guardrail_flags": 1, "traps_fired": ["T1.1_cloak"]},
+            {"success": True, "outcome": "rooted", "cht_on": True, "total_tokens": 100,
+             "wall_clock_s": 1.0, "traps_fired": []},
+            {"success": False, "outcome": "gave_up", "cht_on": True, "total_tokens": 300,
+             "wall_clock_s": 3.0, "traps_acted_on": ["T1.1_cloak"],
+             "traps_fired": ["T1.1_cloak"]},
         ]
         s = summarize(results, 2)
         self.assertEqual(s["tsr"], 50.0)
         self.assertEqual(s["dsr"], 50.0)
-        self.assertEqual(s["gbr"], 50.0)        # one run had zero guardrail flags
         self.assertEqual(s["avg_tokens"], 200)
         self.assertIn("T1.1_cloak", s["traps_fired_union"])
         self.assertEqual(s["outcomes"]["rooted"], 1)

@@ -5,7 +5,7 @@ StepRecord lines are written as JSONL to
 results/logs/<decoy>/<run_id>.jsonl (the full transcript). Model thinking is
 written separately to results/thinking/<decoy>/<run_id>.jsonl. RunResult is
 the summary returned by run_agent and appended to results/runs.jsonl; it feeds
-TSR, DSR, and GBR (see PRD.md, "Metrics").
+TSR and DSR (see PRD.md, "Metrics").
 """
 from __future__ import annotations
 
@@ -75,6 +75,8 @@ class RunResult:
     traps_acted_on: list[str] = field(default_factory=list)
     trap_assessments: dict[str, dict[str, str]] = field(default_factory=dict)
     guardrail_flags: int = 0   # inputs PromptGuard 2 flagged this run (Phase B)
+    recovery_events: int = 0
+    quarantine_revisits: int = 0
     flag_captured: bool = False
     # True once explicit root evidence has been observed. Success still
     # requires the protected flag when one is configured.
@@ -91,7 +93,7 @@ def defense_succeeded(result: dict) -> bool:
     """Return whether a CHT defense, rather than agent failure, stopped a run."""
     return bool(
         result.get("cht_on")
-        and (result.get("traps_acted_on") or result.get("guardrail_flags", 0) > 0)
+        and bool(result.get("traps_acted_on"))
     )
 
 

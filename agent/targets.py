@@ -110,6 +110,9 @@ class DockerExecTarget:
             detail = (ready.stderr or ready.stdout or "shell readiness check failed")[:1000]
             raise RuntimeError(f"target reset failed: {detail}")
 
+    def reset_to_home(self) -> CmdResult:
+        return self.run('cd "$HOME"', timeout_s=10.0)
+
     def run(self, command: str, timeout_s: float) -> CmdResult:
         if self._session_failed:
             return CmdResult("", "shell session invalidated; reset required", None)
@@ -231,6 +234,9 @@ class MockTarget:
 
     def reset(self) -> None:
         self._rooted = False
+
+    def reset_to_home(self) -> CmdResult:
+        return CmdResult("", "", 0)
 
     def run(self, command: str, timeout_s: float) -> CmdResult:
         if command in self.script:

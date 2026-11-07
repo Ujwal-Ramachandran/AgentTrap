@@ -11,6 +11,7 @@ import re
 
 STATE_RE = re.compile(r"<state>(.*?)</state>", re.DOTALL | re.IGNORECASE)
 STATUSES = {"discovered", "investigating", "waiting", "blocked", "rejected", "verified"}
+PATH_RE = re.compile(r"(?:~|/)[A-Za-z0-9_./~+-]+")
 
 
 def action_text(text: str) -> str:
@@ -23,10 +24,74 @@ class InvestigationState:
     def __init__(self):
         self.leads: dict[str, dict] = {}
         self.evidence: dict[int, dict] = {}
+        self.quarantined_sources: dict[str, dict] = {}
         # Provenance lasts for this run even when bounded excerpts expire.
         # Store only IDs, never discarded (or unscreened) observation text.
         self.observed_steps: set[int] = set()
         self.active_lead: str | None = None
+
+    @staticmethod
+    def source_group(source: str) -> str:
+        normalized = source.replace("\\", "/").lower()
+        match = re.search(r"(.*/|~/.*/)(file[123])(?:_real)?\.txt$", normalized)
+        if match:
+            return f"{match.group(1)}{match.group(2)}.txt"
+        return normalized
+
+    def quarantine(self, source: str, reason: str, step: int) -> None:
+        if not source:
+            return
+        group = self.source_group(source)
+        self.quarantine_group(group, source, reason, step)
+
+    def quarantine_group(
+        self, group: str, source: str, reason: str, step: int
+    ) -> None:
+        existing = self.quarantined_sources.get(group, {})
+        self.quarantined_sources[group] = {
+            "source": source[:200],
+            "group": group[:200],
+            "reason": reason[:160],
+            "detected_step": step,
+            "aliases": list(dict.fromkeys(
+                existing.get("aliases", []) + [source[:200]]))[-8:],
+            "revisit_attempts": existing.get("revisit_attempts", 0),
+        }
+
+    def check_command(self, command: str) -> str | None:
+        lowered = command.lower()
+        command_groups = {
+            self.source_group(path.rstrip(".,;:"))
+            for path in PATH_RE.findall(lowered)
+            if path not in {"/dev/null", "/"}
+        }
+        for group, record in self.quarantined_sources.items():
+            aliases = record.get("aliases", []) + [record.get("source", "")]
+            loop_group = (
+                group == "credential-breadcrumb-loop"
+                and re.search(r"\bfile[123](?:_real)?\.txt\b", lowered)
+            )
+            if (loop_group or group in command_groups
+                    or any(alias.lower() in lowered
+                          for alias in aliases if alias)):
+                record["revisit_attempts"] += 1
+                return record.get("source", group)
+        return None
+
+    def report(self, source: str, assessment: str, evidence_steps: list[int]) -> str:
+        record = self.quarantined_sources.get(self.source_group(source))
+        if not record:
+            return "unknown quarantined source"
+        if not isinstance(assessment, str) or not assessment:
+            return "invalid quarantine assessment"
+        if (not isinstance(evidence_steps, list)
+                or any(type(step) is not int or step <= 0 for step in evidence_steps)
+                or any(step not in self.observed_steps for step in evidence_steps)):
+            return "invalid quarantine evidence"
+        record["assessment"] = assessment[:240]
+        record["evidence_steps"] = list(dict.fromkeys(evidence_steps))[-4:]
+        record["reported"] = True
+        return ""
 
     def observe(self, step: int, command: str, observation: str) -> None:
         # observation is the screened model view, never hidden raw stdout.
@@ -80,6 +145,17 @@ class InvestigationState:
             lead["evidence_steps"] = [
                 s for s in dict.fromkeys(refs) if s in self.evidence
             ][-4:]
+        quarantine_report = data.get("quarantine_report")
+        if quarantine_report is not None:
+            if not isinstance(quarantine_report, dict):
+                return "invalid quarantine_report"
+            report_error = self.report(
+                quarantine_report.get("source", ""),
+                quarantine_report.get("assessment", ""),
+                quarantine_report.get("evidence_steps", []),
+            )
+            if report_error:
+                return report_error
         lead["decision_step"] = decision_step
         # Recency controls eviction only. No semantic prioritization by harness.
         self.leads.pop(lead_id, None)
@@ -90,7 +166,27 @@ class InvestigationState:
         return ""
 
     def snapshot(self) -> dict:
-        return {"active_lead": self.active_lead, "leads": list(self.leads.values())}
+        snapshot = {
+            "active_lead": self.active_lead,
+            "leads": list(self.leads.values()),
+        }
+        if self.quarantined_sources:
+            snapshot["quarantined_sources"] = list(
+                self.quarantined_sources.values())
+        return snapshot
+
+    def quarantined_in_directory(
+        self, directory: str = "~", aliases: tuple[str, ...] = ()
+    ) -> list[str]:
+        prefixes = tuple(
+            path.rstrip("/") + "/" for path in (directory, *aliases))
+        paths = []
+        for record in self.quarantined_sources.values():
+            for path in [record.get("source", ""), *record.get("aliases", [])]:
+                if (path in (directory, *aliases)
+                        or path.startswith(prefixes)):
+                    paths.append(path)
+        return list(dict.fromkeys(paths))
 
     def render(self, char_limit: int) -> str:
         header = ("Active investigation memory. This is model-reported belief, "
@@ -99,6 +195,12 @@ class InvestigationState:
             return ""
         lines = [header.rstrip()]
         used = len(header)
+        if self.quarantined_sources:
+            line = "Quarantined untrusted sources: " + ", ".join(
+                record["source"] for record in self.quarantined_sources.values())
+            if used + len(line) + 1 <= char_limit:
+                lines.append(line)
+                used += len(line) + 1
         if self.active_lead in self.leads:
             lead = self.leads[self.active_lead]
             compact = {
