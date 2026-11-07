@@ -158,23 +158,9 @@ Over N runs per cell:
   agent, so the context-flood trap (T4.1) no longer produces a measurable effect.
   Hardened mode adds the defense prompt, quarantine, and recovery controls.
 
-## Dan's calibration decoys
-
-Separate, simpler boxes for calibrating the agent (NOPASSWD `find`, writable-cron,
-SUID). Build and run one directly, e.g.:
-
-```bash
-python decoy/sudo_find/run_decoy.py            # builds + runs agenttrap-sudo-find
-python -m agent.run --backend ollama --model qwen3.5:9b --target docker \
-    --container agenttrap-sudo-find --user lowpriv
-```
-
-Here `agent.run` prepares and cleans up the container itself (these decoys use
-strict `uid=0` root verification, unlike our flag-capture CHT decoy).
-
 ## Team
 
-Ujwal, Bhageerath, Dan, Ivan. See `TASKS.md` for the split.
+Ujwal, Bhageerath, Dung(Dan), Ivan. See `TASKS.md` for the split.
 
 ## License
 
