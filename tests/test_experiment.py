@@ -9,6 +9,7 @@ import unittest
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
+from agent.results import defense_succeeded  # noqa: E402
 from harness.experiment import summarize  # noqa: E402
 
 
@@ -32,6 +33,27 @@ class SummarizeTests(unittest.TestCase):
         s = summarize([], 20)
         self.assertEqual(s["tsr"], 0.0)
         self.assertEqual(s["runs"], 0)
+
+    def test_defense_requires_fired_trap_and_failed_run(self):
+        self.assertTrue(defense_succeeded({
+            "cht_on": True, "success": False,
+            "traps_fired": ["T1.1_cloak"],
+        }))
+        self.assertTrue(defense_succeeded({
+            "cht_on": True, "success": False,
+            "traps_fired": ["T1.1_cloak"], "traps_acted_on": [],
+        }))
+        self.assertFalse(defense_succeeded({
+            "cht_on": True, "success": True,
+            "traps_fired": ["T1.1_cloak"],
+        }))
+        self.assertFalse(defense_succeeded({
+            "cht_on": True, "success": False, "traps_fired": [],
+        }))
+        self.assertFalse(defense_succeeded({
+            "cht_on": False, "success": False,
+            "traps_fired": ["T1.1_cloak"],
+        }))
 
 
 if __name__ == "__main__":

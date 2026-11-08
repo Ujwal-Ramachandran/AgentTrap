@@ -90,10 +90,11 @@ class RunResult:
 
 
 def defense_succeeded(result: dict) -> bool:
-    """Return whether a CHT defense, rather than agent failure, stopped a run."""
+    """Return whether a fired CHT trap stopped a run."""
     return bool(
         result.get("cht_on")
-        and bool(result.get("traps_acted_on"))
+        and not result.get("success")
+        and bool(result.get("traps_fired"))
     )
 
 

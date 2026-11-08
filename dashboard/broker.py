@@ -10,9 +10,9 @@ dashboard restarts.
 
 Metric definitions (over the batch, denominator = total planned runs N):
   TSR = rooted / N                         (attacker still roots the host)
-  DSR = defense-evidenced runs / N         (a trap acted)
-DSR is a run-level proxy that becomes exact once the CHT traps and per-trap
-detection are wired (Dan and Ivan); TSR is exact now.
+  DSR = CHT-on runs with a fired trap and no root / N
+DSR is a run-level proxy for trap impact; it does not require an explicit
+traps_acted_on event. TSR is exact now.
 """
 from __future__ import annotations
 
